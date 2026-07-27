@@ -22,7 +22,6 @@ CHAT_ID = -1003721340249
 
 # ذخیره آخرین قیمت‌های ثبت شده
 last_usdt_irt = None
-last_btc_irt = None
 last_btc_usdt = None
 
 def get_iran_time():
@@ -64,6 +63,15 @@ def fetch_nobitex_price(symbol):
         print(f"[{get_iran_time()}] استثنا در دریافت {symbol}: {repr(e)}")
         return None
 
+def get_arrow(new_val, old_val):
+    """تعیین فلش بر اساس تغییرات قیمت"""
+    if old_val is None or new_val == old_val:
+        return "⚪️ ➖"
+    elif new_val > old_val:
+        return "🟢 🔺"
+    else:
+        return "🔴 🔻"
+
 def send_message(text):
     if not TOKEN:
         print("خطا: BOT_TOKEN تنظیم نشده است!")
@@ -80,7 +88,7 @@ def send_message(text):
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
-    global last_usdt_irt, last_btc_irt, last_btc_usdt
+    global last_usdt_irt, last_btc_usdt
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -90,38 +98,38 @@ def bot_loop():
         try:
             # دریافت قیمت‌ها از نوبیتکس
             usdt_irt = fetch_nobitex_price("USDTIRT")
-            btc_irt = fetch_nobitex_price("BTCIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
             now_str = get_iran_time()
 
-            # اگر هر کدام از قیمت‌ها دریافت نشد، چند ثانیه صبر کن
-            if usdt_irt is None or btc_irt is None or btc_usdt is None:
+            # اگر هر کدام از قیمت‌ها دریافت نشد، ۵ ثانیه صبر کن
+            if usdt_irt is None or btc_usdt is None:
                 print(f"[{now_str}] دریافت کامل قیمت‌ها انجام نشد، ۵ ثانیه صبر...")
                 time.sleep(5)
                 continue
 
             usdt_irt = int(usdt_irt)
-            btc_irt = int(btc_irt)
             btc_usdt = round(btc_usdt, 2)
 
             # مقداردهی اولیه قیمت‌ها در اولین اجرا
-            if last_usdt_irt is None or last_btc_irt is None or last_btc_usdt is None:
+            if last_usdt_irt is None or last_btc_usdt is None:
                 last_usdt_irt = usdt_irt
-                last_btc_irt = btc_irt
                 last_btc_usdt = btc_usdt
                 print(f"[{now_str}] قیمت‌های اولیه ثبت شدند.")
                 time.sleep(4)
                 continue
 
             # چک کردن تغییر در هر یک از قیمت‌ها
-            if (usdt_irt != last_usdt_irt) or (btc_irt != last_btc_irt) or (btc_usdt != last_btc_usdt):
+            if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt):
+                # محاسبه فلش‌ها برای تتر و بیت‌کوین
+                usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
+                btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
+
                 # ساخت قالب پیام جدید
                 message = (
                     f"⏰ <b>{now_str}</b>\n\n"
-                    f"💵 <b>تتر:</b> {usdt_irt:,} تومان\n"
-                    f"🪙 <b>بیت‌کوین (تومانی):</b> {btc_irt:,} تومان\n"
-                    f"📊 <b>بیت‌کوین (دلاری):</b> ${btc_usdt:,.2f}"
+                    f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
+                    f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
                 )
                 
                 print(f"[{now_str}] قیمت تغییر کرد! ارسال به کانال...")
@@ -129,7 +137,6 @@ def bot_loop():
 
                 # به‌روزرسانی مقادیر قبلی
                 last_usdt_irt = usdt_irt
-                last_btc_irt = btc_irt
                 last_btc_usdt = btc_usdt
             else:
                 print(f"[{now_str}] قیمت‌ها بدون تغییر | USDT: {usdt_irt:,} | BTC: ${btc_usdt:,.2f}")
