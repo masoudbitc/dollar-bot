@@ -20,26 +20,30 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-last_price = None
+# ذخیره آخرین قیمت‌های ثبت شده
+last_usdt_irt = None
+last_btc_irt = None
+last_btc_usdt = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
     iran_offset = timezone(timedelta(hours=3, minutes=30))
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
-def get_price():
+def fetch_nobitex_price(symbol):
+    """تابع عمومی برای دریافت قیمت از نوبیتکس"""
     try:
-        url = "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
+        url = f"https://apiv2.nobitex.ir/v3/orderbook/{symbol}"
         r = requests.get(url, timeout=10)
 
         if r.status_code != 200:
-            print(f"[{get_iran_time()}] خطا در دریافت قیمت از نوبیتکس: کد {r.status_code}")
+            print(f"[{get_iran_time()}] خطا در دریافت {symbol}: کد {r.status_code}")
             return None
 
         data = r.json()
 
         if data.get("lastTradePrice") is not None:
-            return int(float(data["lastTradePrice"]))
+            return float(data["lastTradePrice"])
 
         bids = data.get("bids", [])
         asks = data.get("asks", [])
@@ -48,16 +52,16 @@ def get_price():
         best_ask = float(asks[0][0]) if isinstance(asks, list) and asks else None
 
         if best_bid is not None and best_ask is not None:
-            return int((best_bid + best_ask) / 2)
+            return (best_bid + best_ask) / 2
         if best_bid is not None:
-            return int(best_bid)
+            return best_bid
         if best_ask is not None:
-            return int(best_ask)
+            return best_ask
 
         return None
 
     except Exception as e:
-        print(f"[{get_iran_time()}] استثنا در دریافت قیمت: {repr(e)}")
+        print(f"[{get_iran_time()}] استثنا در دریافت {symbol}: {repr(e)}")
         return None
 
 def send_message(text):
@@ -67,7 +71,7 @@ def send_message(text):
 
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text}, timeout=10)
+        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
         if res.status_code != 200:
             print(f"[{get_iran_time()}] خطا در ارسال به تلگرام: {res.status_code} - {res.text[:100]}")
         else:
@@ -76,34 +80,59 @@ def send_message(text):
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
-    global last_price
+    global last_usdt_irt, last_btc_irt, last_btc_usdt
+    
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
-    send_message(f"🤖 ربات قیمت USDT فعال شد! | ساعت ثبت: {current_time}")
+    send_message(f"🤖 <b>ربات قیمت تتر و بیت‌کوین فعال شد!</b>\n⏰ ساعت ثبت: {current_time}")
 
     while True:
         try:
-            price = get_price()
+            # دریافت قیمت‌ها از نوبیتکس
+            usdt_irt = fetch_nobitex_price("USDTIRT")
+            btc_irt = fetch_nobitex_price("BTCIRT")
+            btc_usdt = fetch_nobitex_price("BTCUSDT")
+
             now_str = get_iran_time()
 
-            if price is None:
-                print(f"[{now_str}] قیمت دریافت نشد، ۵ ثانیه صبر...")
+            # اگر هر کدام از قیمت‌ها دریافت نشد، چند ثانیه صبر کن
+            if usdt_irt is None or btc_irt is None or btc_usdt is None:
+                print(f"[{now_str}] دریافت کامل قیمت‌ها انجام نشد، ۵ ثانیه صبر...")
                 time.sleep(5)
                 continue
 
-            if last_price is None:
-                last_price = price
-                print(f"[{now_str}] قیمت اولیه ثبت شد: {price:,} تومان")
+            usdt_irt = int(usdt_irt)
+            btc_irt = int(btc_irt)
+            btc_usdt = round(btc_usdt, 2)
+
+            # مقداردهی اولیه قیمت‌ها در اولین اجرا
+            if last_usdt_irt is None or last_btc_irt is None or last_btc_usdt is None:
+                last_usdt_irt = usdt_irt
+                last_btc_irt = btc_irt
+                last_btc_usdt = btc_usdt
+                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند.")
                 time.sleep(4)
                 continue
 
-            if price != last_price:
-                message = f"{now_str} | {price:,}"
-                print(f"[{now_str}] قیمت تغییر کرد! از {last_price:,} به {price:,}. ارسال به کانال...")
+            # چک کردن تغییر در هر یک از قیمت‌ها
+            if (usdt_irt != last_usdt_irt) or (btc_irt != last_btc_irt) or (btc_usdt != last_btc_usdt):
+                # ساخت قالب پیام جدید
+                message = (
+                    f"⏰ <b>{now_str}</b>\n\n"
+                    f"💵 <b>تتر:</b> {usdt_irt:,} تومان\n"
+                    f"🪙 <b>بیت‌کوین (تومانی):</b> {btc_irt:,} تومان\n"
+                    f"📊 <b>بیت‌کوین (دلاری):</b> ${btc_usdt:,.2f}"
+                )
+                
+                print(f"[{now_str}] قیمت تغییر کرد! ارسال به کانال...")
                 send_message(message)
-                last_price = price
+
+                # به‌روزرسانی مقادیر قبلی
+                last_usdt_irt = usdt_irt
+                last_btc_irt = btc_irt
+                last_btc_usdt = btc_usdt
             else:
-                print(f"[{now_str}] قیمت بدون تغییر: {price:,} تومان")
+                print(f"[{now_str}] قیمت‌ها بدون تغییر | USDT: {usdt_irt:,} | BTC: ${btc_usdt:,.2f}")
 
         except Exception as e:
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
