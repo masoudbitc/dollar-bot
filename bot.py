@@ -24,10 +24,12 @@ TIMEZONE = pytz.timezone('Asia/Tehran')
 
 last_price = None
 
-def get_iran_time():
-    """دریافت زمان دقیق به وقت تهران"""
-    return datetime.now(TIMEZONE).strftime("%H:%M:%S")
+from datetime import datetime, timezone, timedelta
 
+def get_iran_time():
+    """محاسبه مستقیم ساعت تهران (UTC + 3:30)"""
+    iran_tz = timezone(timedelta(hours=3, minutes=30))
+    return datetime.now(iran_tz).strftime("%H:%M:%S")
 def get_price():
     try:
         url = "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
