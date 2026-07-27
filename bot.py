@@ -30,38 +30,52 @@ def get_iran_time():
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
 def fetch_nobitex_price(symbol):
-    """تابع عمومی برای دریافت قیمت از نوبیتکس"""
+    """دریافت قیمت از نوبیتکس با هدر مرورگر واقعی"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    # روش اول: استفاده از endpoint اصلی orderbook
     try:
         url = f"https://apiv2.nobitex.ir/v3/orderbook/{symbol}"
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=headers, timeout=10)
 
-        if r.status_code != 200:
-            print(f"[{get_iran_time()}] خطا در دریافت {symbol}: کد {r.status_code}")
-            return None
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("lastTradePrice") is not None and float(data["lastTradePrice"]) > 0:
+                return float(data["lastTradePrice"])
 
-        data = r.json()
+            bids = data.get("bids", [])
+            asks = data.get("asks", [])
+            best_bid = float(bids[0][0]) if isinstance(bids, list) and bids else None
+            best_ask = float(asks[0][0]) if isinstance(asks, list) and asks else None
 
-        if data.get("lastTradePrice") is not None:
-            return float(data["lastTradePrice"])
-
-        bids = data.get("bids", [])
-        asks = data.get("asks", [])
-
-        best_bid = float(bids[0][0]) if isinstance(bids, list) and bids else None
-        best_ask = float(asks[0][0]) if isinstance(asks, list) and asks else None
-
-        if best_bid is not None and best_ask is not None:
-            return (best_bid + best_ask) / 2
-        if best_bid is not None:
-            return best_bid
-        if best_ask is not None:
-            return best_ask
-
-        return None
-
+            if best_bid is not None and best_ask is not None:
+                return (best_bid + best_ask) / 2
+            if best_bid is not None:
+                return best_bid
+            if best_ask is not None:
+                return best_ask
+        else:
+            print(f"[{get_iran_time()}] Orderbook {symbol} status code: {r.status_code}")
     except Exception as e:
-        print(f"[{get_iran_time()}] استثنا در دریافت {symbol}: {repr(e)}")
-        return None
+        print(f"[{get_iran_time()}] Orderbook error for {symbol}: {repr(e)}")
+
+    # روش دوم (جایگزین): دریافت از endpoint آمار بازار
+    try:
+        url = "https://api.nobitex.ir/v2/market/stats"
+        src_dst = "usdt-irt" if symbol == "USDTIRT" else "btc-usdt"
+        r = requests.post(url, json={"src": src_dst.split("-")[0], "dst": src_dst.split("-")[1]}, headers=headers, timeout=10)
+        if r.status_code == 200:
+            stats = r.json().get("stats", {})
+            key = f"{src_dst.split('-')[0]}-{src_dst.split('-')[1]}"
+            price = stats.get(key, {}).get("latest")
+            if price:
+                return float(price)
+    except Exception as e:
+        print(f"[{get_iran_time()}] Stats fallback error for {symbol}: {repr(e)}")
+
+    return None
 
 def get_arrow(new_val, old_val):
     """تعیین فلش بر اساس تغییرات قیمت"""
@@ -104,28 +118,27 @@ def bot_loop():
 
             # اگر هر کدام از قیمت‌ها دریافت نشد، ۵ ثانیه صبر کن
             if usdt_irt is None or btc_usdt is None:
-                print(f"[{now_str}] دریافت کامل قیمت‌ها انجام نشد، ۵ ثانیه صبر...")
+                print(f"[{now_str}] دریافت کامل قیمت‌ها انجام نشد (USDT: {usdt_irt} | BTC: {btc_usdt})، ۵ ثانیه صبر...")
                 time.sleep(5)
                 continue
 
-            usdt_irt = int(usdt_irt)
+            # تبدیل قیمت تتر به ریال به تومان (در صورت نیاز)
+            usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
             btc_usdt = round(btc_usdt, 2)
 
             # مقداردهی اولیه قیمت‌ها در اولین اجرا
             if last_usdt_irt is None or last_btc_usdt is None:
                 last_usdt_irt = usdt_irt
                 last_btc_usdt = btc_usdt
-                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند.")
+                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند | USDT: {usdt_irt:,} | BTC: ${btc_usdt:,.2f}")
                 time.sleep(4)
                 continue
 
             # چک کردن تغییر در هر یک از قیمت‌ها
             if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt):
-                # محاسبه فلش‌ها برای تتر و بیت‌کوین
                 usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
                 btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
 
-                # ساخت قالب پیام جدید
                 message = (
                     f"⏰ <b>{now_str}</b>\n\n"
                     f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
@@ -135,7 +148,6 @@ def bot_loop():
                 print(f"[{now_str}] قیمت تغییر کرد! ارسال به کانال...")
                 send_message(message)
 
-                # به‌روزرسانی مقادیر قبلی
                 last_usdt_irt = usdt_irt
                 last_btc_usdt = btc_usdt
             else:
