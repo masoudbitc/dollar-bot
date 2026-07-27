@@ -1,17 +1,30 @@
 import os
 import requests
 import time
+import threading
+from flask import Flask
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from datetime import datetime
 
-# توکن به صورت امن از تنظیمات Render خوانده می‌شود
+# ---- 1. وب‌سرور ساده برای راضی نگه داشتن Render ----
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run_flask():
+    port = int(os.getenv("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+# ---- 2. تنظیمات ربات تلگرام ----
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
 last_price = None
 
-# ---- session با retry برای نوبیتکس ----
+# session با retry برای نوبیتکس
 nobitex_session = requests.Session()
 retries = Retry(
     total=6,
@@ -33,11 +46,9 @@ def get_price():
 
         data = r.json()
 
-        # قیمت اصلی: lastTradePrice (ریال)
         if data.get("lastTradePrice") is not None:
             return int(float(data["lastTradePrice"]))
 
-        # fallback با best bid/ask
         bids = data.get("bids", [])
         asks = data.get("asks", [])
 
@@ -57,7 +68,6 @@ def get_price():
         print("Error getting price:", repr(e))
         return None
 
-
 def send_message(text):
     if not TOKEN:
         print("خطا: توکن ربات (BOT_TOKEN) در تنظیمات Render ست نشده است!")
@@ -71,29 +81,40 @@ def send_message(text):
     except Exception as e:
         print("Error sending message:", repr(e))
 
+def bot_loop():
+    global last_price
+    print("ربات شروع شد، ارسال پیام تست به کانال...")
+    send_message("🤖 ربات قیمت USDT فعال شد!")
 
-print("ربات شروع شد، ارسال پیام تست به کانال...")
-send_message("🤖 ربات قیمت USDT فعال شد!")
+    while True:
+        price = get_price()
 
-while True:
-    price = get_price()
+        if price is None:
+            print("قیمت دریافت نشد، ۵ ثانیه دیگر تلاش می‌کنم...")
+            time.sleep(5)
+            continue
 
-    if price is None:
-        print("قیمت دریافت نشد، 1 ثانیه دیگر تلاش می‌کنم...")
-        time.sleep(1)
-        continue
+        if last_price is None:
+            last_price = price
+            time.sleep(3)
+            continue
 
-    # اولین بار: فقط ذخیره کنیم
-    if last_price is None:
-        last_price = price
-        time.sleep(1)
-        continue
+        if price != last_price:
+            now = datetime.now().strftime("%H:%M:%S")
+            message = f"{now} | {price:,}"
+            print(message)
+            send_message(message)
+            last_price = price
 
-    if price != last_price:
-        now = datetime.now().strftime("%H:%M:%S")
-        message = f"{now} | {price:,}"
-        print(message)
-        send_message(message)
-        last_price = price
+        # ایجاد فاصله ۳ ثانیه‌ای برای جلوگیری از بلاک شدن آی‌پی توسط نوبیتکس
+        time.sleep(3)
 
-    time.sleep(1)
+# ---- 3. اجرای همزمان وب‌سرور و ربات ----
+if __name__ == "__main__":
+    # اجرای وب‌سرور در یک Thread جداگانه
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+    # اجرای حلقه اصلی ربات
+    bot_loop()
