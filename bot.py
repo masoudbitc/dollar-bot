@@ -3,11 +3,9 @@ import requests
 import time
 import threading
 from flask import Flask
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from datetime import datetime
 
-# ---- 1. وب‌سرور ساده برای راضی نگه داشتن Render ----
+# ---- 1. وب‌سرور برای Render و UptimeRobot ----
 app = Flask(__name__)
 
 @app.route('/')
@@ -18,37 +16,29 @@ def run_flask():
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# ---- 2. تنظیمات ربات تلگرام ----
+# ---- 2. تنظیمات ربات ----
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
 last_price = None
 
-# session با retry برای نوبیتکس
-nobitex_session = requests.Session()
-retries = Retry(
-    total=6,
-    backoff_factor=0.8,
-    status_forcelist=[429, 500, 502, 503, 504],
-    allowed_methods=["GET"],
-    raise_on_status=False
-)
-nobitex_session.mount("https://", HTTPAdapter(max_retries=retries))
-
 def get_price():
     try:
         url = "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
-        r = nobitex_session.get(url, timeout=(5, 20))
+        # استفاده از requests مستقیم با timeout مشخص
+        r = requests.get(url, timeout=10)
 
         if r.status_code != 200:
-            print("Error getting price: HTTP", r.status_code, "body:", r.text[:300])
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] خطا در دریافت قیمت از نوبیتکس: کد {r.status_code}")
             return None
 
         data = r.json()
 
+        # ابتدا چک کردن قیمت آخرین معامله
         if data.get("lastTradePrice") is not None:
             return int(float(data["lastTradePrice"]))
 
+        # در صورت نبودن، محاسبه از روی بهترین پیشنهاد خرید/فروش
         bids = data.get("bids", [])
         asks = data.get("asks", [])
 
@@ -65,56 +55,63 @@ def get_price():
         return None
 
     except Exception as e:
-        print("Error getting price:", repr(e))
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] استثنا در دریافت قیمت: {repr(e)}")
         return None
 
 def send_message(text):
     if not TOKEN:
-        print("خطا: توکن ربات (BOT_TOKEN) در تنظیمات Render ست نشده است!")
+        print("خطا: BOT_TOKEN تنظیم نشده است!")
         return
 
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text}, timeout=15)
+        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text}, timeout=10)
         if res.status_code != 200:
-            print("Error sending message:", res.status_code, res.text[:300])
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] خطا در ارسال به تلگرام: {res.status_code} - {res.text[:100]}")
+        else:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] پیام با موفقیت به تلگرام ارسال شد.")
     except Exception as e:
-        print("Error sending message:", repr(e))
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
     global last_price
-    print("ربات شروع شد، ارسال پیام تست به کانال...")
+    print("ربات شروع شد، ارسال پیام تست...")
     send_message("🤖 ربات قیمت USDT فعال شد!")
 
     while True:
-        price = get_price()
+        try:
+            price = get_price()
+            now_str = datetime.now().strftime("%H:%M:%S")
 
-        if price is None:
-            print("قیمت دریافت نشد، ۵ ثانیه دیگر تلاش می‌کنم...")
-            time.sleep(5)
-            continue
+            if price is None:
+                print(f"[{now_str}] قیمت دریافت نشد، ۵ ثانیه صبر...")
+                time.sleep(5)
+                continue
 
-        if last_price is None:
-            last_price = price
-            time.sleep(3)
-            continue
+            if last_price is None:
+                last_price = price
+                print(f"[{now_str}] قیمت اولیه ثبت شد: {price:,} تومان")
+                time.sleep(4)
+                continue
 
-        if price != last_price:
-            now = datetime.now().strftime("%H:%M:%S")
-            message = f"{now} | {price:,}"
-            print(message)
-            send_message(message)
-            last_price = price
+            if price != last_price:
+                message = f"{now_str} | {price:,}"
+                print(f"[{now_str}] قیمت تغییر کرد! از {last_price:,} به {price:,}. ارسال به کانال...")
+                send_message(message)
+                last_price = price
+            else:
+                # این خط در لوگ چاپ می‌شود تا مطمئن شویم حلقه زنده است
+                print(f"[{now_str}] قیمت بدون تغییر: {price:,} تومان")
 
-        # ایجاد فاصله ۳ ثانیه‌ای برای جلوگیری از بلاک شدن آی‌پی توسط نوبیتکس
-        time.sleep(3)
+        except Exception as e:
+            print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
 
-# ---- 3. اجرای همزمان وب‌سرور و ربات ----
+        time.sleep(4)
+
+# ---- 3. اجرا ----
 if __name__ == "__main__":
-    # اجرای وب‌سرور در یک Thread جداگانه
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
 
-    # اجرای حلقه اصلی ربات
     bot_loop()
