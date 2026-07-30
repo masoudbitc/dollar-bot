@@ -358,3 +358,21 @@ if __name__ == "__main__":
     t_chart.start()
 
     bot_loop()
+if __name__ == "__main__":
+    t_flask = threading.Thread(target=run_flask)
+    t_flask.daemon = True
+    t_flask.start()
+
+    # --- تست فوری ارسال چارت‌ها به محض روشن شدن ربات ---
+    print("در حال تست ارسال تمامی چارت‌ها...")
+    publish_charts("تست ۲۴ ساعته", "Test-24h")
+    publish_charts("تست هفتگی", "Test-Weekly")
+    publish_charts("تست ماهانه", "Test-Monthly")
+    publish_charts("تست سالانه", "Test-Yearly")
+    # --------------------------------------------------
+
+    t_chart = threading.Thread(target=hourly_chart_loop)
+    t_chart.daemon = True
+    t_chart.start()
+
+    bot_loop()
