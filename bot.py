@@ -2,6 +2,7 @@ import os
 import requests
 import time
 import threading
+import cloudscraper
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
@@ -20,7 +21,15 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره آخرین قیمت‌های ثبت شده
+# ساخت اسکراپر پایداری که سیستم‌های Cloudflare را رد می‌کند
+scraper = cloudscraper.create_scraper(
+    browser={
+        'browser': 'chrome',
+        'platform': 'windows',
+        'desktop': True
+    }
+)
+
 last_usdt_irt = None
 last_btc_usdt = None
 
@@ -35,7 +44,7 @@ def get_iran_time():
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
 def fetch_nobitex_price(symbol):
-    """دریافت قیمت از نوبیتکس با هدر مرورگر واقعی"""
+    """دریافت قیمت از نوبیتکس"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -79,45 +88,45 @@ def fetch_nobitex_price(symbol):
     return None
 
 def fetch_milli_price():
-    """دریافت قیمت یک گرم طلای ۱۸ عیار از میلی (Milli)"""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*"
-    }
+    """دریافت مستیقم قیمت هر گرم طلای ۱۸ عیار از میلی (Milli)"""
     try:
         url = "https://milli.gold/api/v1/price/latest"
-        r = requests.get(url, headers=headers, timeout=10)
+        r = scraper.get(url, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            price = data.get("price") or data.get("buyPrice") or data.get("data", {}).get("price")
+            # استخراج دقیق قیمت خرید یا فروش از ساختار میلی
+            price = data.get("price") or data.get("buyPrice") or data.get("price18k")
+            if not price and isinstance(data, dict):
+                # اگر دیتای تو در تو باشد
+                price = data.get("data", {}).get("price") or data.get("data", {}).get("buyPrice")
+            
             if price:
                 price = float(price)
+                # تبدیل ریال به تومان در صورت نیاز
                 return int(price / 10) if price > 10000000 else int(price)
     except Exception as e:
-        print(f"[{get_iran_time()}] Milli gold fetch error: {repr(e)}")
+        print(f"[{get_iran_time()}] Milli Cloudscraper Error: {repr(e)}")
     return None
 
 def fetch_melligold_price():
-    """دریافت قیمت یک گرم طلای ۱۸ عیار از ملی‌گلد (Melli Gold)"""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*"
-    }
+    """دریافت مستقیم قیمت هر گرم طلای ۱۸ عیار از ملی‌گلد (Melli Gold)"""
     try:
         url = "https://melligold.com/api/v1/gold-price"
-        r = requests.get(url, headers=headers, timeout=10)
+        r = scraper.get(url, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            price = data.get("price") or data.get("buy_price") or data.get("data", {}).get("price")
+            price = data.get("price") or data.get("buy_price") or data.get("price_18")
+            if not price and isinstance(data, dict):
+                price = data.get("data", {}).get("price") or data.get("data", {}).get("buy_price")
+                
             if price:
                 price = float(price)
                 return int(price / 10) if price > 10000000 else int(price)
     except Exception as e:
-        print(f"[{get_iran_time()}] Melli Gold fetch error: {repr(e)}")
+        print(f"[{get_iran_time()}] MelliGold Cloudscraper Error: {repr(e)}")
     return None
 
 def get_arrow(new_val, old_val):
-    """تعیین فلش بر اساس تغییرات قیمت"""
     if old_val is None or new_val == old_val:
         return "⚪️ ➖"
     elif new_val > old_val:
