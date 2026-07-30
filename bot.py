@@ -4,8 +4,9 @@ import time
 import threading
 import io
 import matplotlib
-matplotlib.use('Agg')  # جهت اجرا در سرور بدون محیط گرافیکی
+matplotlib.use('Agg')  # اجرای بدون محیط گرافیکی سرور
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
@@ -24,7 +25,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره تاریخچه قیمت‌ها برای رسم چارت
+# ذخیره تاریخچه قیمت‌ها برای رسم چارت (حداکثر ۶۰ نقطه معادل ۱ ساعت)
 btc_history = []
 gold_history = []
 time_history = []
@@ -102,7 +103,7 @@ def send_message(text):
         print(f"[{get_iran_time()}] خطا در ارسال پیام: {repr(e)}")
 
 def send_photo_bytes(image_bytes, caption):
-    """ارسال مستقیم تصویر تولیدشده در حافظه به تلگرام"""
+    """ارسال مستقیم تصویر تولیدشده به تلگرام"""
     if not TOKEN:
         return
     try:
@@ -115,53 +116,78 @@ def send_photo_bytes(image_bytes, caption):
     except Exception as e:
         print(f"[{get_iran_time()}] استثنا در ارسال عکس: {repr(e)}")
 
-def generate_chart(data_list, time_list, title, color='#1f77b4'):
-    """رسم چارت گرافیکی در حافظه پایتون"""
-    plt.figure(figsize=(8, 4), dpi=150)
-    plt.plot(time_list, data_list, marker='o', color=color, linewidth=2, markersize=4)
-    plt.title(title, fontsize=12, fontweight='bold', pad=10)
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.xticks(rotation=45, fontsize=8)
-    plt.yticks(fontsize=8)
+def generate_pro_chart(prices, times, title, main_color='#00F0FF', fill_color='#00F0FF22'):
+    """رسم یک چارت مدرن و پیشرفته با تم تاریک سبک تریدینگ‌ویو"""
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
+    
+    # رنگ پس‌زمینه
+    fig.patch.set_facecolor('#131722')
+    ax.set_facecolor('#131722')
+
+    # رسم خط قیمت و سایه زیر آن
+    ax.plot(times, prices, color=main_color, linewidth=2.5, label='Price')
+    ax.fill_between(times, prices, min(prices) * 0.999, color=main_color, alpha=0.15)
+
+    # تنظیمات عنوان و شبکه‌بندی
+    ax.set_title(title, fontsize=14, fontweight='bold', color='#FFFFFF', pad=15)
+    ax.grid(True, linestyle='--', color='#2A2E39', alpha=0.7)
+
+    # تزیین محورها
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#2A2E39')
+    ax.spines['bottom'].set_color('#2A2E39')
+    
+    plt.xticks(rotation=30, fontsize=8, color='#B2B5BE')
+    plt.yticks(fontsize=9, color='#B2B5BE')
+    
+    # نمایش آخرین قیمت در انتهای چارت
+    if prices:
+        last_price = prices[-1]
+        ax.annotate(f' ${last_price:,.2f}', 
+                    xy=(times[-1], last_price), 
+                    xytext=(times[-1], last_price),
+                    fontsize=10, fontweight='bold', color='#FFFFFF',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor=main_color, alpha=0.8))
+
     plt.tight_layout()
 
     buf = io.BytesIO()
-    plt.savefig(buf, format='png')
+    plt.savefig(buf, format='png', facecolor=fig.get_facecolor(), edgecolor='none')
     buf.seek(0)
-    plt.close()
+    plt.close(fig)
     return buf.getvalue()
 
-# ---- 3. پردازش ارسال چارت‌های تصویری ----
+# ---- 3. پردازش ارسال چارت‌های تصویری ساعتی ----
 def hourly_chart_loop():
-    """ارسال چارت‌های تولید شده ۱۰ ثانیه بعد از استارت و سپس هر ۱ ساعت"""
-    time.sleep(10)  # تست اولیه ۱۰ ثانیه بعد از روشن شدن
+    """ارسال چارت واقعی پس از ۲۰ دقیقه تجمع داده، و سپس هر ۱ ساعت یک‌بار"""
+    # ۱۰ دقیقه صبر اولیه تا ربات حداقل چند نقطه واقعی قیمت ذخیره کند
+    time.sleep(600) 
     
     while True:
         try:
             now_str = get_iran_time()
             
-            # اگر داده‌ای جمع‌آوری شده باشد چارت رسم می‌شود
-            if len(btc_history) > 1:
-                # چارت بیت‌کوین
-                btc_bytes = generate_chart(btc_history, time_history, "BTC/USDT Price Chart", color='#f7931a')
-                send_photo_bytes(btc_bytes, f"📊 <b>چارت تغییرات بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
+            # اگر حداقل ۵ نقطه واقعی ثبت شده باشد چارت ارسال می‌شود
+            if len(btc_history) >= 5 and len(gold_history) >= 5:
+                # ۱. چارت بیت‌کوین (رنگ نارنجی کریپتویی)
+                btc_bytes = generate_pro_chart(btc_history, time_history, "BTC/USDT 1-Hour Chart", main_color='#F7931A')
+                send_photo_bytes(btc_bytes, f"📊 <b>چارت نوسانات بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
                 time.sleep(3)
 
-                # چارت انس طلا
-                gold_bytes = generate_chart(gold_history, time_history, "XAU/USD Gold Chart", color='#d4af37')
-                send_photo_bytes(gold_bytes, f"📊 <b>چارت تغییرات انس جهانی طلا</b>\n⏰ <b>{now_str}</b>")
-            else:
-                # نمونه چارت آزمایشی برای اولین تست تا داده‌ها پر شوند
-                sample_times = [(datetime.now() - timedelta(minutes=i*10)).strftime("%H:%M") for i in range(5, -1, -1)]
-                sample_btc = [last_btc_usdt or 65000] * 6
-                btc_bytes = generate_chart(sample_btc, sample_times, "BTC/USDT (Initial Test)", color='#f7931a')
-                send_photo_bytes(btc_bytes, f"📊 <b>چارت آزمایشی بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
+                # ۲. چارت انس طلا (رنگ طلایی)
+                gold_bytes = generate_pro_chart(gold_history, time_history, "XAU/USD Gold Chart", main_color='#FFD700')
+                send_photo_bytes(gold_bytes, f"📊 <b>چارت نوسانات انس جهانی طلا</b>\n⏰ <b>{now_str}</b>")
 
-            print(f"[{now_str}] تصاویر چارت با موفقیت ارسال شدند.")
+                print(f"[{now_str}] تصاویر چارت‌های واقعی با موفقیت ارسال شدند.")
+            else:
+                print(f"[{now_str}] داده‌های واقعی هنوز کافی نیستند (کمتر از ۵ نقطه).")
             
         except Exception as e:
             print(f"خطا در ایجاد/ارسال چارت: {repr(e)}")
             
+        # هر ۳۶۰۰ ثانیه (۱ ساعت) ارسال مجدد
         time.sleep(3600)
 
 # ---- 4. حلقه اصلی قیمت‌های لحظه‌ای ----
@@ -194,10 +220,10 @@ def bot_loop():
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0))
 
-                # افزودن به تاریخچه
+                # ذخیره داده‌های طلا جهت رسم چارت
                 if len(gold_history) == 0 or gold_history[-1] != xau_usd_val:
                     gold_history.append(xau_usd_val)
-                    if len(gold_history) > 20: gold_history.pop(0)
+                    if len(gold_history) > 60: gold_history.pop(0)
 
                 if last_xau_usd is None or last_gold_18k_nobitex is None or last_gold_18k_global is None:
                     last_xau_usd = xau_usd_val
@@ -236,11 +262,11 @@ def bot_loop():
                 usdt_ask_val = int(usdt_ask / 10) if usdt_ask > 100000 else int(usdt_ask)
                 btc_usdt_val = round(btc_last, 2)
 
-                # افزودن به تاریخچه
+                # ذخیره قیمت‌های بیت‌کوین و زمان جهت رسم چارت
                 if len(btc_history) == 0 or btc_history[-1] != btc_usdt_val:
                     btc_history.append(btc_usdt_val)
                     time_history.append(now_str_crypto[:5])
-                    if len(btc_history) > 20: 
+                    if len(btc_history) > 60: 
                         btc_history.pop(0)
                         time_history.pop(0)
 
