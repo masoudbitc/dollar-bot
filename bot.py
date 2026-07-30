@@ -2,10 +2,6 @@ import os
 import requests
 import time
 import threading
-import io
-import matplotlib
-matplotlib.use('Agg')  # اجرای بدون محیط گرافیکی سرور
-import matplotlib.pyplot as plt
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
@@ -24,7 +20,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره تاریخچه قیمت‌ها برای رسم چارت
+# ذخیره تاریخچه قیمت‌ها برای رسم چارت (حداکثر ۳۰ نقطه)
 btc_history = []
 gold_history = []
 time_history = []
@@ -97,79 +93,71 @@ def send_message(text):
         return
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
+        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
+        print(f"[{get_iran_time()}] وضعیت ارسال پیام: {res.status_code}")
     except Exception as e:
         print(f"[{get_iran_time()}] خطا در ارسال پیام: {repr(e)}")
 
-def send_photo_bytes(image_bytes, caption):
-    """ارسال مستقیم تصویر تولیدشده به تلگرام"""
+def send_photo_url(photo_url, caption):
+    """ارسال لینک چارت ساخته شده به تلگرام"""
     if not TOKEN:
         return
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-        files = {'photo': ('chart.png', image_bytes, 'image/png')}
-        data = {'chat_id': CHAT_ID, 'caption': caption, 'parse_mode': 'HTML'}
-        res = requests.post(url, data=data, files=files, timeout=20)
-        if res.status_code != 200:
-            print(f"[{get_iran_time()}] خطا در ارسال عکس: {res.status_code} - {res.text}")
+        data = {'chat_id': CHAT_ID, 'photo': photo_url, 'caption': caption, 'parse_mode': 'HTML'}
+        res = requests.post(url, data=data, timeout=15)
+        print(f"[{get_iran_time()}] وضعیت ارسال عکس: {res.status_code}")
     except Exception as e:
         print(f"[{get_iran_time()}] استثنا در ارسال عکس: {repr(e)}")
 
-def generate_pro_chart(prices, times, title, main_color='#00F0FF'):
-    """رسم چارت تاریک مدرن"""
-    plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
-    
-    fig.patch.set_facecolor('#131722')
-    ax.set_facecolor('#131722')
-
-    ax.plot(times, prices, color=main_color, linewidth=2.5)
-    ax.fill_between(times, prices, min(prices) * 0.999, color=main_color, alpha=0.15)
-
-    ax.set_title(title, fontsize=14, fontweight='bold', color='#FFFFFF', pad=15)
-    ax.grid(True, linestyle='--', color='#2A2E39', alpha=0.7)
-
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#2A2E39')
-    ax.spines['bottom'].set_color('#2A2E39')
-    
-    plt.xticks(rotation=30, fontsize=8, color='#B2B5BE')
-    plt.yticks(fontsize=9, color='#B2B5BE')
-    
-    if prices:
-        last_price = prices[-1]
-        ax.annotate(f' ${last_price:,.2f}', 
-                    xy=(times[-1], last_price), 
-                    xytext=(times[-1], last_price),
-                    fontsize=10, fontweight='bold', color='#FFFFFF',
-                    bbox=dict(boxstyle='round,pad=0.3', facecolor=main_color, alpha=0.8))
-
-    plt.tight_layout()
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', facecolor=fig.get_facecolor(), edgecolor='none')
-    buf.seek(0)
-    plt.close(fig)
-    return buf.getvalue()
+def get_quickchart_url(labels, data, title, color="rgb(247, 147, 26)"):
+    """تولید لینک تصویر چارت گرافیکی با استفاده از QuickChart API"""
+    chart_config = {
+        "type": "line",
+        "data": {
+            "labels": labels,
+            "datasets": [{
+                "label": title,
+                "data": data,
+                "borderColor": color,
+                "backgroundColor": color.replace("rgb", "rgba").replace(")", ", 0.1)"),
+                "fill": True,
+                "borderWidth": 3,
+                "pointRadius": 4
+            }]
+        },
+        "options": {
+            "title": {"display": True, "text": title, "fontColor": "#fff", "fontSize": 16},
+            "legend": {"display": False},
+            "scales": {
+                "xAxes": [{"ticks": {"fontColor": "#ccc"}}],
+                "yAxes": [{"ticks": {"fontColor": "#ccc"}}]
+            }
+        }
+    }
+    import json, urllib.parse
+    json_str = json.dumps(chart_config)
+    encoded = urllib.parse.quote(json_str)
+    return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
 
 # ---- 3. پردازش ارسال چارت‌های تصویری ساعتی ----
 def hourly_chart_loop():
-    """ارسال چارت‌های تصویری هر ۱ ساعت یک‌بار"""
-    time.sleep(300) # ۵ دقیقه اول برای جمع‌آوری چند قیمت اول
+    """ارسال چارت ۵ دقیقه پس از استارت و سپس هر ۱ ساعت"""
+    time.sleep(15) # ۱۵ ثانیه بعد از استارت جهت تست عکس
     
     while True:
         try:
             now_str = get_iran_time()
-            if len(btc_history) >= 2 and len(gold_history) >= 2:
-                btc_bytes = generate_pro_chart(btc_history, time_history, "BTC/USDT 1-Hour Chart", main_color='#F7931A')
-                send_photo_bytes(btc_bytes, f"📊 <b>چارت نوسانات بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
-                time.sleep(3)
-
-                gold_bytes = generate_pro_chart(gold_history, time_history, "XAU/USD Gold Chart", main_color='#FFD700')
-                send_photo_bytes(gold_bytes, f"📊 <b>چارت نوسانات انس جهانی طلا</b>\n⏰ <b>{now_str}</b>")
-
-                print(f"[{now_str}] تصاویر چارت ارسال شدند.")
+            if len(btc_history) >= 1:
+                # اگر داده کم باشد برای زیبایی چند نقطه فرضی مشابه می‌سازیم
+                times = time_history if len(time_history) > 1 else [now_str[:5]]
+                prices = btc_history if len(btc_history) > 1 else [btc_history[0]]
+                
+                # چارت بیت کوین
+                chart_url = get_quickchart_url(times, prices, "Bitcoin (BTC/USDT) Price Chart", "rgb(247, 147, 26)")
+                send_photo_url(chart_url, f"📊 <b>چارت تغییرات بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
+                
+                print(f"[{now_str}] عکس چارت با موفقیت ارسال شد.")
         except Exception as e:
             print(f"خطا در ارسال چارت: {repr(e)}")
             
@@ -187,7 +175,7 @@ def bot_loop():
     while True:
         try:
             # -------------------------------------------------------------
-            # گام ۱: (ثانیه ۰) بررسی و ارسال پیام انس و طلا
+            # گام ۱: دریافت قیمت طلا و انس
             # -------------------------------------------------------------
             xau_usd = fetch_tradingview_gold()
             xaut_bid, xaut_ask, xaut_last = fetch_nobitex_orderbook("XAUTIRT")
@@ -205,12 +193,10 @@ def bot_loop():
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0))
 
-                # ذخیره داده‌های طلا جهت رسم چارت
                 if len(gold_history) == 0 or gold_history[-1] != xau_usd_val:
                     gold_history.append(xau_usd_val)
-                    if len(gold_history) > 60: gold_history.pop(0)
+                    if len(gold_history) > 30: gold_history.pop(0)
 
-                # شرط ارسال: بار اول (ارسال حتمی) یا تغییر قیمت در نوبت‌های بعد
                 if last_xau_usd is None or (xau_usd_val != last_xau_usd) or \
                    (gold_18k_nobitex != last_gold_18k_nobitex) or \
                    (gold_18k_global != last_gold_18k_global):
@@ -234,7 +220,7 @@ def bot_loop():
             time.sleep(5)
 
             # -------------------------------------------------------------
-            # گام ۲: (ثانیه ۵) بررسی و ارسال پیام تتر و بیت‌کوین
+            # گام ۲: دریافت قیمت تتر و بیت‌کوین
             # -------------------------------------------------------------
             _, _, btc_last = fetch_nobitex_orderbook("BTCUSDT")
 
@@ -244,15 +230,13 @@ def bot_loop():
                 usdt_ask_val = int(usdt_ask / 10) if usdt_ask > 100000 else int(usdt_ask)
                 btc_usdt_val = round(btc_last, 2)
 
-                # ذخیره قیمت‌های بیت‌کوین جهت چارت
                 if len(btc_history) == 0 or btc_history[-1] != btc_usdt_val:
                     btc_history.append(btc_usdt_val)
                     time_history.append(now_str_crypto[:5])
-                    if len(btc_history) > 60: 
+                    if len(btc_history) > 30: 
                         btc_history.pop(0)
                         time_history.pop(0)
 
-                # شرط ارسال: بار اول (ارسال حتمی) یا تغییر قیمت در نوبت‌های بعد
                 if last_usdt_bid is None or (usdt_bid_val != last_usdt_bid) or \
                    (usdt_ask_val != last_usdt_ask) or (btc_usdt_val != last_btc_usdt):
                     
