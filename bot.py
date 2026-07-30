@@ -273,8 +273,8 @@ def bot_loop():
                     gold_msg = (
                         f"⏰ <b>{now_str}</b>\n"
                         f"🥇 <b>انس طلا:</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
-                        f"🔱 <b>طلا ۱۸عیار (نوبیتکس):</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
-                        f"🌐 <b>طلا ۱۸عیار (انس جهانی):</b> {gold_18k_global:,} تومان {gold_global_arrow}"
+                        f"🔱 <b>طلا/تومان ۱۸عیار :</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
+                        f"🌐 <b>طلا/تتر ۱۸عیار :</b> {gold_18k_global:,} تومان {gold_global_arrow}"
                     )
                     send_message(gold_msg)
 
