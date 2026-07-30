@@ -20,10 +20,14 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
+# ذخیره آخرین قیمت‌ها برای تشخیص تغییرات
 last_usdt_irt = None
 last_btc_usdt = None
+
 last_xau_usd = None
-last_gold_18k = None
+last_xaut_irt = None
+last_gold_18k_nobitex = None
+last_gold_18k_global = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
@@ -54,7 +58,7 @@ def fetch_nobitex_price(symbol):
     return None
 
 def fetch_tradingview_gold():
-    """دریافت مستقیم و دقیق انس جهانی طلا از شاخص اصلى TradingView (TVC:GOLD)"""
+    """دریافت قیمت انس جهانی طلا ($) از TradingView"""
     url = "https://scanner.tradingview.com/global/scan"
     payload = {
         "symbols": {"tickers": ["TVC:GOLD"]},
@@ -75,16 +79,6 @@ def fetch_tradingview_gold():
                 return float(price)
     except Exception as e:
         print(f"[{get_iran_time()}] TradingView TVC:GOLD error: {repr(e)}")
-        
-    # منبع جایگزین دوم در صورت قطعی: OANDA XAUUSD
-    try:
-        url_alt = "https://scanner.tradingview.com/forex/scan"
-        payload_alt = {"symbols": {"tickers": ["OANDA:XAUUSD"]}, "columns": ["close"]}
-        r2 = requests.post(url_alt, json=payload_alt, headers=headers, timeout=10)
-        if r2.status_code == 200 and r2.json().get("data"):
-            return float(r2.json()["data"][0]["d"][0])
-    except Exception as e:
-        print(f"[{get_iran_time()}] OANDA Fallback error: {repr(e)}")
         
     return None
 
@@ -110,7 +104,7 @@ def send_message(text):
 
 def bot_loop():
     global last_usdt_irt, last_btc_usdt
-    global last_xau_usd, last_gold_18k
+    global last_xau_usd, last_xaut_irt, last_gold_18k_nobitex, last_gold_18k_global
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -120,52 +114,73 @@ def bot_loop():
         try:
             now_str = get_iran_time()
 
+            # 1. دریافت قیمت تتر و بیت‌کوین از نوبیتکس
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
-            xau_usd = fetch_tradingview_gold()
 
-            # ارسال قیمت ارز و بیت‌کوین
+            # 2. دریافت انس جهانی (تریدینگ‌ویو) و انس تومانی (تترگلد نوبیتکس)
+            xau_usd = fetch_tradingview_gold()
+            xaut_irt = fetch_nobitex_price("XAUTIRT")
+
+            # پردازش و ارسال قیمت‌های بازار ارز و دیجیتال
             if usdt_irt is not None and btc_usdt is not None:
-                usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
-                btc_usdt = round(btc_usdt, 2)
+                usdt_irt_val = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+                btc_usdt_val = round(btc_usdt, 2)
 
                 if last_usdt_irt is None or last_btc_usdt is None:
-                    last_usdt_irt = usdt_irt
-                    last_btc_usdt = btc_usdt
-                elif (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt):
-                    usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
-                    btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
+                    last_usdt_irt = usdt_irt_val
+                    last_btc_usdt = btc_usdt_val
+                elif (usdt_irt_val != last_usdt_irt) or (btc_usdt_val != last_btc_usdt):
+                    usdt_arrow = get_arrow(usdt_irt_val, last_usdt_irt)
+                    btc_arrow = get_arrow(btc_usdt_val, last_btc_usdt)
 
                     crypto_msg = (
                         f"⏰ <b>{now_str}</b>\n"
-                        f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
-                        f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
+                        f"💵 <b>تتر:</b> {usdt_irt_val:,} تومان {usdt_arrow}\n"
+                        f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {btc_arrow}"
                     )
                     send_message(crypto_msg)
-                    last_usdt_irt = usdt_irt
-                    last_btc_usdt = btc_usdt
+                    last_usdt_irt = usdt_irt_val
+                    last_btc_usdt = btc_usdt_val
 
-            # ارسال قیمت طلا (انس تریدینگ‌ویو + ۱۸ عیار)
-            if xau_usd is not None and usdt_irt is not None:
-                xau_usd = round(xau_usd, 2)
-                # محاسبه دقیق ۱۸ عیار
-                gold_18k_calculated = int(((xau_usd * usdt_irt) / 31.1034768) * (18.0 / 24.0))
+            # پردازش و ارسال ۴ قیمت طلا
+            if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
+                xau_usd_val = round(xau_usd, 2)
+                xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
 
-                if last_xau_usd is None or last_gold_18k is None:
-                    last_xau_usd = xau_usd
-                    last_gold_18k = gold_18k_calculated
-                elif (xau_usd != last_xau_usd) or (gold_18k_calculated != last_gold_18k):
-                    xau_arrow = get_arrow(xau_usd, last_xau_usd)
-                    gold_18k_arrow = get_arrow(gold_18k_calculated, last_gold_18k)
+                # محاسبه ۳: طلای ۱۸ عیار بر اساس تترگلد نوبیتکس
+                gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
+
+                # محاسبه ۴: طلای ۱۸ عیار بر اساس انس جهانی + تتر نوبیتکس
+                usdt_toman = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+                gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0))
+
+                if last_xau_usd is None or last_xaut_irt is None:
+                    last_xau_usd = xau_usd_val
+                    last_xaut_irt = xaut_irt_val
+                    last_gold_18k_nobitex = gold_18k_nobitex
+                    last_gold_18k_global = gold_18k_global
+                elif (xau_usd_val != last_xau_usd) or (xaut_irt_val != last_xaut_irt) or \
+                     (gold_18k_nobitex != last_gold_18k_nobitex) or (gold_18k_global != last_gold_18k_global):
+
+                    xau_arrow = get_arrow(xau_usd_val, last_xau_usd)
+                    xaut_arrow = get_arrow(xaut_irt_val, last_xaut_irt)
+                    gold_nobitex_arrow = get_arrow(gold_18k_nobitex, last_gold_18k_nobitex)
+                    gold_global_arrow = get_arrow(gold_18k_global, last_gold_18k_global)
 
                     gold_msg = (
                         f"⏰ <b>{now_str}</b>\n"
-                        f"🥇 <b>انس جهانی:</b> ${xau_usd:,.2f} {xau_arrow}\n"
-                        f"🔱 <b>طلای ۱۸ عیار:</b> {gold_18k_calculated:,} تومان {gold_18k_arrow}"
+                        f"🥇 <b>انس جهانی (تریدینگ‌ویو):</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
+                        f"💵 <b>انس تومانی (تترگلد نوبیتکس):</b> {xaut_irt_val:,} تومان {xaut_arrow}\n"
+                        f"🔱 <b>طلای ۱۸ عیار (بر اساس تترگلد):</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
+                        f"🌐 <b>طلای ۱۸ عیار (بر اساس انس جهانی + تتر):</b> {gold_18k_global:,} تومان {gold_global_arrow}"
                     )
                     send_message(gold_msg)
-                    last_xau_usd = xau_usd
-                    last_gold_18k = gold_18k_calculated
+
+                    last_xau_usd = xau_usd_val
+                    last_xaut_irt = xaut_irt_val
+                    last_gold_18k_nobitex = gold_18k_nobitex
+                    last_gold_18k_global = gold_18k_global
 
             print(f"[{now_str}] بررسی انجام شد.")
 
@@ -174,6 +189,7 @@ def bot_loop():
 
         time.sleep(5)
 
+# ---- 3. اجرا ----
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)
     t.daemon = True
