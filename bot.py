@@ -20,10 +20,8 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره آخرین قیمت‌های ثبت شده
 last_usdt_irt = None
 last_btc_usdt = None
-
 last_xau_usd = None
 last_gold_18k = None
 
@@ -37,65 +35,60 @@ def fetch_nobitex_price(symbol):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-    
     try:
         url = f"https://apiv2.nobitex.ir/v3/orderbook/{symbol}"
         r = requests.get(url, headers=headers, timeout=10)
-
         if r.status_code == 200:
             data = r.json()
             if data.get("lastTradePrice") is not None and float(data["lastTradePrice"]) > 0:
                 return float(data["lastTradePrice"])
-
             bids = data.get("bids", [])
             asks = data.get("asks", [])
             best_bid = float(bids[0][0]) if isinstance(bids, list) and bids else None
             best_ask = float(asks[0][0]) if isinstance(asks, list) and asks else None
-
-            if best_bid is not None and best_ask is not None:
+            if best_bid and best_ask:
                 return (best_bid + best_ask) / 2
-            if best_bid is not None:
-                return best_bid
-            if best_ask is not None:
-                return best_ask
+            return best_bid or best_ask
     except Exception as e:
         print(f"[{get_iran_time()}] Nobitex error for {symbol}: {repr(e)}")
-
     return None
 
-def fetch_tradingview_xauusd():
-    """دریافت قیمت انس جهانی طلا (XAUUSD) از TradingView"""
-    url = "https://scanner.tradingview.com/forex/scan"
+def fetch_tradingview_gold():
+    """دریافت مستقیم و دقیق انس جهانی طلا از شاخص اصلى TradingView (TVC:GOLD)"""
+    url = "https://scanner.tradingview.com/global/scan"
     payload = {
-        "symbols": {"tickers": ["FOREXCOM:XAUUSD"]},
+        "symbols": {"tickers": ["TVC:GOLD"]},
         "columns": ["close"]
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/"
     }
     
     try:
         r = requests.post(url, json=payload, headers=headers, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            price = data["data"][0]["d"][0]
-            return float(price)
+            if data.get("data"):
+                price = data["data"][0]["d"][0]
+                return float(price)
     except Exception as e:
-        print(f"[{get_iran_time()}] TradingView XAUUSD error: {repr(e)}")
+        print(f"[{get_iran_time()}] TradingView TVC:GOLD error: {repr(e)}")
         
-    # روش جایگزین (Fallback) برای انس جهانی
+    # منبع جایگزین دوم در صورت قطعی: OANDA XAUUSD
     try:
-        r2 = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", headers=headers, timeout=10)
-        if r2.status_code == 200:
-            price = r2.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
-            return float(price)
+        url_alt = "https://scanner.tradingview.com/forex/scan"
+        payload_alt = {"symbols": {"tickers": ["OANDA:XAUUSD"]}, "columns": ["close"]}
+        r2 = requests.post(url_alt, json=payload_alt, headers=headers, timeout=10)
+        if r2.status_code == 200 and r2.json().get("data"):
+            return float(r2.json()["data"][0]["d"][0])
     except Exception as e:
-        print(f"[{get_iran_time()}] Yahoo Finance Fallback error: {repr(e)}")
+        print(f"[{get_iran_time()}] OANDA Fallback error: {repr(e)}")
         
     return None
 
 def get_arrow(new_val, old_val):
-    """تعیین فلش بر اساس تغییرات قیمت"""
     if old_val is None or new_val == old_val:
         return "⚪️ ➖"
     elif new_val > old_val:
@@ -107,14 +100,11 @@ def send_message(text):
     if not TOKEN:
         print("خطا: BOT_TOKEN تنظیم نشده است!")
         return
-
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
         if res.status_code != 200:
             print(f"[{get_iran_time()}] خطا در ارسال به تلگرام: {res.status_code} - {res.text[:100]}")
-        else:
-            print(f"[{get_iran_time()}] پیام با موفقیت به تلگرام ارسال شد.")
     except Exception as e:
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
@@ -130,14 +120,11 @@ def bot_loop():
         try:
             now_str = get_iran_time()
 
-            # 1. دریافت قیمت‌های ارز و دیجیتال
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
+            xau_usd = fetch_tradingview_gold()
 
-            # 2. دریافت انس طلا از تریدینگ‌ویو
-            xau_usd = fetch_tradingview_xauusd()
-
-            # پردازش تتر و بیت‌کوین
+            # ارسال قیمت ارز و بیت‌کوین
             if usdt_irt is not None and btc_usdt is not None:
                 usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
                 btc_usdt = round(btc_usdt, 2)
@@ -154,17 +141,14 @@ def bot_loop():
                         f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
                         f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
                     )
-                    print(f"[{now_str}] قیمت ارز/بیت‌کوین تغییر کرد! ارسال به کانال...")
                     send_message(crypto_msg)
-
                     last_usdt_irt = usdt_irt
                     last_btc_usdt = btc_usdt
 
-            # پردازش انس جهانی و محاسبه ۱۸ عیار
+            # ارسال قیمت طلا (انس تریدینگ‌ویو + ۱۸ عیار)
             if xau_usd is not None and usdt_irt is not None:
                 xau_usd = round(xau_usd, 2)
-                
-                # فرمول: (قیمت انس جهانی * قیمت دلار/تتر) / 31.1034768 * (18 / 24)
+                # محاسبه دقیق ۱۸ عیار
                 gold_18k_calculated = int(((xau_usd * usdt_irt) / 31.1034768) * (18.0 / 24.0))
 
                 if last_xau_usd is None or last_gold_18k is None:
@@ -179,9 +163,7 @@ def bot_loop():
                         f"🥇 <b>انس جهانی:</b> ${xau_usd:,.2f} {xau_arrow}\n"
                         f"🔱 <b>طلای ۱۸ عیار:</b> {gold_18k_calculated:,} تومان {gold_18k_arrow}"
                     )
-                    print(f"[{now_str}] قیمت انس طلا/۱۸عیار تغییر کرد! ارسال به کانال...")
                     send_message(gold_msg)
-
                     last_xau_usd = xau_usd
                     last_gold_18k = gold_18k_calculated
 
@@ -192,10 +174,8 @@ def bot_loop():
 
         time.sleep(5)
 
-# ---- 3. اجرا ----
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
-
     bot_loop()
