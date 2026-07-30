@@ -21,7 +21,8 @@ TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
 # ذخیره آخرین قیمت‌ها برای تشخیص تغییرات
-last_usdt_irt = None
+last_usdt_bid = None
+last_usdt_ask = None
 last_btc_usdt = None
 
 last_xau_usd = None
@@ -33,8 +34,8 @@ def get_iran_time():
     iran_offset = timezone(timedelta(hours=3, minutes=30))
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
-def fetch_nobitex_price(symbol):
-    """دریافت قیمت از نوبیتکس"""
+def fetch_nobitex_orderbook(symbol):
+    """دریافت بهترین قیمت خرید (Bid) و بهترین قیمت فروش (Ask) از نوبیتکس"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -43,18 +44,17 @@ def fetch_nobitex_price(symbol):
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            if data.get("lastTradePrice") is not None and float(data["lastTradePrice"]) > 0:
-                return float(data["lastTradePrice"])
             bids = data.get("bids", [])
             asks = data.get("asks", [])
+            
             best_bid = float(bids[0][0]) if isinstance(bids, list) and bids else None
             best_ask = float(asks[0][0]) if isinstance(asks, list) and asks else None
-            if best_bid and best_ask:
-                return (best_bid + best_ask) / 2
-            return best_bid or best_ask
+            last_trade = float(data.get("lastTradePrice", 0)) if data.get("lastTradePrice") else None
+            
+            return best_bid, best_ask, last_trade
     except Exception as e:
         print(f"[{get_iran_time()}] Nobitex error for {symbol}: {repr(e)}")
-    return None
+    return None, None, None
 
 def fetch_tradingview_gold():
     """دریافت قیمت انس جهانی طلا ($) از TradingView"""
@@ -102,7 +102,7 @@ def send_message(text):
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
-    global last_usdt_irt, last_btc_usdt
+    global last_usdt_bid, last_usdt_ask, last_btc_usdt
     global last_xau_usd, last_gold_18k_nobitex, last_gold_18k_global
     
     current_time = get_iran_time()
@@ -112,17 +112,21 @@ def bot_loop():
     while True:
         try:
             # -------------------------------------------------------------
-            # گام ۱: (ثانیه ۰) ابتدا بررسی و ارسال پیام انس و طلا
+            # گام ۱: (ثانیه ۰) بررسی و ارسال پیام انس و طلا
             # -------------------------------------------------------------
             xau_usd = fetch_tradingview_gold()
-            xaut_irt = fetch_nobitex_price("XAUTIRT")
-            usdt_irt = fetch_nobitex_price("USDTIRT")
+            xaut_bid, xaut_ask, xaut_last = fetch_nobitex_orderbook("XAUTIRT")
+            usdt_bid, usdt_ask, usdt_last = fetch_nobitex_orderbook("USDTIRT")
 
-            if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
+            # میانگین تتر و تترگلد برای محاسبات طلا
+            usdt_mid = (usdt_bid + usdt_ask) / 2 if (usdt_bid and usdt_ask) else usdt_last
+            xaut_mid = (xaut_bid + xaut_ask) / 2 if (xaut_bid and xaut_ask) else xaut_last
+
+            if xau_usd is not None and xaut_mid is not None and usdt_mid is not None:
                 now_str_gold = get_iran_time()
                 xau_usd_val = round(xau_usd, 2)
-                xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-                usdt_toman = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+                xaut_irt_val = int(xaut_mid / 10) if xaut_mid > 1000000 else int(xaut_mid)
+                usdt_toman = int(usdt_mid / 10) if usdt_mid > 100000 else int(usdt_mid)
 
                 # محاسبات ۱۸ عیار
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
@@ -153,34 +157,41 @@ def bot_loop():
                     last_gold_18k_global = gold_18k_global
 
             # -------------------------------------------------------------
-            # توقف دقیقا به مدت ۵ ثانیه قبل از بررسی بازار ارز و دیجیتال
+            # توقف به مدت ۵ ثانیه
             # -------------------------------------------------------------
             time.sleep(5)
 
             # -------------------------------------------------------------
-            # گام ۲: (ثانیه ۵) بررسی و ارسال پیام تتر و بیت‌کوین
+            # گام ۲: (ثانیه ۵) بررسی و ارسال پیام تتر (خرید و فروش) و بیت‌کوین
             # -------------------------------------------------------------
-            btc_usdt = fetch_nobitex_price("BTCUSDT")
+            _, _, btc_last = fetch_nobitex_orderbook("BTCUSDT")
 
-            if usdt_irt is not None and btc_usdt is not None:
+            if usdt_bid is not None and usdt_ask is not None and btc_last is not None:
                 now_str_crypto = get_iran_time()
-                usdt_irt_val = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
-                btc_usdt_val = round(btc_usdt, 2)
+                
+                # تبدیل به تومان
+                usdt_bid_val = int(usdt_bid / 10) if usdt_bid > 100000 else int(usdt_bid)
+                usdt_ask_val = int(usdt_ask / 10) if usdt_ask > 100000 else int(usdt_ask)
+                btc_usdt_val = round(btc_last, 2)
 
-                if last_usdt_irt is None or last_btc_usdt is None:
-                    last_usdt_irt = usdt_irt_val
+                if last_usdt_bid is None or last_usdt_ask is None or last_btc_usdt is None:
+                    last_usdt_bid = usdt_bid_val
+                    last_usdt_ask = usdt_ask_val
                     last_btc_usdt = btc_usdt_val
-                elif (usdt_irt_val != last_usdt_irt) or (btc_usdt_val != last_btc_usdt):
-                    usdt_arrow = get_arrow(usdt_irt_val, last_usdt_irt)
+                elif (usdt_bid_val != last_usdt_bid) or (usdt_ask_val != last_usdt_ask) or (btc_usdt_val != last_btc_usdt):
+                    usdt_bid_arrow = get_arrow(usdt_bid_val, last_usdt_bid)
+                    usdt_ask_arrow = get_arrow(usdt_ask_val, last_usdt_ask)
                     btc_arrow = get_arrow(btc_usdt_val, last_btc_usdt)
 
                     crypto_msg = (
                         f"⏰ <b>{now_str_crypto}</b>\n"
-                        f"💵 <b>تتر:</b> {usdt_irt_val:,} تومان {usdt_arrow}\n"
+                        f"💵 <b>تتر (خرید):</b> {usdt_bid_val:,} تومان {usdt_bid_arrow}\n"
+                        f"💵 <b>تتر (فروش):</b> {usdt_ask_val:,} تومان {usdt_ask_arrow}\n"
                         f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {btc_arrow}"
                     )
                     send_message(crypto_msg)
-                    last_usdt_irt = usdt_irt_val
+                    last_usdt_bid = usdt_bid_val
+                    last_usdt_ask = usdt_ask_val
                     last_btc_usdt = btc_usdt_val
 
             print(f"[{get_iran_time()}] چرخه ۱۰ ثانیه‌ای کامل شد.")
