@@ -24,6 +24,7 @@ CHAT_ID = -1003721340249
 last_usdt_irt = None
 last_btc_usdt = None
 last_xaut_irt = None
+last_gold_18k = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
@@ -103,7 +104,7 @@ def send_message(text):
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
-    global last_usdt_irt, last_btc_usdt, last_xaut_irt
+    global last_usdt_irt, last_btc_usdt, last_xaut_irt, last_gold_18k
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -129,25 +130,32 @@ def bot_loop():
             xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
             btc_usdt = round(btc_usdt, 2)
 
+            # فرمول تبدیل هر انس تترگلد به یک گرم طلای ۱۸ عیار
+            # ۱ انس = ۳۱.۱۰۳۴۷۶۸ گرم | عیار ۱۸ = ۱۸/۲۴ (یا ۰.۷۵)
+            gold_18k = int((xaut_irt / 31.1034768) * (18 / 24))
+
             # مقداردهی اولیه قیمت‌ها در اولین اجرا
-            if last_usdt_irt is None or last_btc_usdt is None or last_xaut_irt is None:
+            if last_usdt_irt is None or last_btc_usdt is None or last_xaut_irt is None or last_gold_18k is None:
                 last_usdt_irt = usdt_irt
                 last_btc_usdt = btc_usdt
                 last_xaut_irt = xaut_irt
-                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند | USDT: {usdt_irt:,} | XAUT: {xaut_irt:,} | BTC: ${btc_usdt:,.2f}")
+                last_gold_18k = gold_18k
+                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند | USDT: {usdt_irt:,} | XAUT: {xaut_irt:,} | 18K: {gold_18k:,} | BTC: ${btc_usdt:,.2f}")
                 time.sleep(4)
                 continue
 
-            # چک کردن تغییر در هر یک از قیمت‌ها
-            if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt) or (xaut_irt != last_xaut_irt):
+            # چک کردن تغییر در هر یک از قیمت‌ها (حتی ۱ تومان تغییر در گرم طلا باعث آپدیت می‌شود)
+            if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt) or (xaut_irt != last_xaut_irt) or (gold_18k != last_gold_18k):
                 usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
                 btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
                 xaut_arrow = get_arrow(xaut_irt, last_xaut_irt)
+                gold_18k_arrow = get_arrow(gold_18k, last_gold_18k)
 
                 message = (
                     f"⏰ <b>{now_str}</b>\n\n"
                     f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
-                    f"🥇 <b>تتر گلد (طلا):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
+                    f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
+                    f"🔱 <b>هر گرم تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
                     f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
                 )
                 
@@ -158,8 +166,9 @@ def bot_loop():
                 last_usdt_irt = usdt_irt
                 last_btc_usdt = btc_usdt
                 last_xaut_irt = xaut_irt
+                last_gold_18k = gold_18k
             else:
-                print(f"[{now_str}] بدون تغییر | USDT: {usdt_irt:,} | XAUT: {xaut_irt:,} | BTC: ${btc_usdt:,.2f}")
+                print(f"[{now_str}] بدون تغییر | USDT: {usdt_irt:,} | 18K: {gold_18k:,} | BTC: ${btc_usdt:,.2f}")
 
         except Exception as e:
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
