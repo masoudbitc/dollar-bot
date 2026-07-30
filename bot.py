@@ -191,7 +191,6 @@ def hourly_chart_loop():
     while True:
         try:
             now = get_iran_datetime()
-            # محاسبه زمان باقی‌مانده تا سر ساعت بعدی
             next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
             wait_seconds = (next_hour - now).total_seconds()
             
@@ -202,7 +201,6 @@ def hourly_chart_loop():
             now_str = now.strftime("%H:%M:%S")
             hour_label = now.strftime("%H:%M")
 
-            # تبدیل تاریخ به تاریخ شمسی
             j_now = jdatetime.datetime.fromgregorian(datetime=now)
 
             # ۱. ثبت کندل ساعتی بیت‌کوین
@@ -231,29 +229,33 @@ def hourly_chart_loop():
 
             time_history.append(hour_label)
 
-            # مدیریت طول تاریخچه کندل‌ها (حداکثر ۲۴ کندل ساعتی)
+            # حداکثر ۲۴ کندل ساعتی
             if len(btc_ohlc_history) > 24: btc_ohlc_history.pop(0)
             if len(gold_ohlc_history) > 24: gold_ohlc_history.pop(0)
             if len(time_history) > 24: time_history.pop(0)
 
             # ----------------- زمان‌بندی دقیق راس ساعت ۲۱:۰۰ -----------------
             if now.hour == 21:
-                # ۱. ارسال روزانه چارت ۲۴ ساعته
+                # ۱. چارت ۲۴ ساعته (هر روز)
                 publish_charts("۲۴ ساعته (24h)", "24-Hour Chart")
                 time.sleep(3)
 
-                # ۲. ارسال چارت هفتگی در روزهای جمعه (جمعه = 4)
-                if now.weekday() == 4:
+                # ۲. چارت هفتگی (روزهای جمعه یا اول ماه شمسی یا اول فصل شمسی)
+                is_friday = (now.weekday() == 4)
+                is_first_of_jalali_month = (j_now.day == 1)
+                is_first_of_jalali_season = (j_now.day == 1 and j_now.month in [1, 4, 7, 10])
+
+                if is_friday or is_first_of_jalali_month or is_first_of_jalali_season:
                     publish_charts("هفتگی (Weekly)", "Weekly Chart")
                     time.sleep(3)
 
-                # ۳. ارسال چارت ماهانه در اول هر ماه شمسی
-                if j_now.day == 1:
+                # ۳. چارت ماهانه (اول هر ماه شمسی یا اول فصل شمسی)
+                if is_first_of_jalali_month or is_first_of_jalali_season:
                     publish_charts("ماهانه شمسی (Monthly)", "Monthly Chart")
                     time.sleep(3)
 
-                # ۴. ارسال چارت سالانه در اول هر فصل شمسی (۱ فروردین، ۱ تیر، ۱ مهر، ۱ دی)
-                if j_now.day == 1 and j_now.month in [1, 4, 7, 10]:
+                # ۴. چارت سالانه (اول هر فصل شمسی: ۱ فروردین، ۱ تیر، ۱ مهر، ۱ دی)
+                if is_first_of_jalali_season:
                     publish_charts("سالانه / فصلی (Yearly)", "Yearly Chart")
 
         except Exception as e:
@@ -272,7 +274,6 @@ def bot_loop():
         try:
             now_str = get_iran_time()
             
-            # 1. دریافت داده‌ها
             xau_usd = fetch_tradingview_gold()
             xaut_bid, xaut_ask, xaut_last = fetch_nobitex_orderbook("XAUTIRT")
             usdt_bid, usdt_ask, usdt_last = fetch_nobitex_orderbook("USDTIRT")
@@ -348,19 +349,24 @@ def bot_loop():
             time.sleep(10)
 
 # ---- 5. اجرا ----
-
 if __name__ == "__main__":
     t_flask = threading.Thread(target=run_flask)
     t_flask.daemon = True
     t_flask.start()
 
-    # --- تست فوری ارسال چارت‌ها به محض روشن شدن ربات ---
-    print("در حال تست ارسال تمامی چارت‌ها...")
+    # --- کد تست فوری (برای بررسی صحت کارکرد ارسال عکس‌ها در تلگرام) ---
+    # چند نمونه داده فیک برای تست اولیه پر می‌شوند تا چارت‌ها خالی نباشند
+    for i in range(5):
+        time_history.append(f"12:0{i}")
+        btc_ohlc_history.append([65000 + i*10, 65200 + i*10, 64900 + i*10, 65100 + i*10])
+        gold_ohlc_history.append([2300 + i, 2310 + i, 2295 + i, 2305 + i])
+
+    print("در حال تست و ارسال اولیه چارت‌ها...")
     publish_charts("تست ۲۴ ساعته", "Test-24h")
     publish_charts("تست هفتگی", "Test-Weekly")
     publish_charts("تست ماهانه", "Test-Monthly")
     publish_charts("تست سالانه", "Test-Yearly")
-    # --------------------------------------------------
+    # ------------------------------------------------------------------
 
     t_chart = threading.Thread(target=hourly_chart_loop)
     t_chart.daemon = True
