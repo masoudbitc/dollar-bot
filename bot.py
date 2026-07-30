@@ -23,6 +23,7 @@ CHAT_ID = -1003721340249
 # ذخیره آخرین قیمت‌های ثبت شده
 last_usdt_irt = None
 last_btc_usdt = None
+last_xaut_irt = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
@@ -64,7 +65,7 @@ def fetch_nobitex_price(symbol):
     # روش دوم (جایگزین): دریافت از endpoint آمار بازار
     try:
         url = "https://api.nobitex.ir/v2/market/stats"
-        src_dst = "usdt-irt" if symbol == "USDTIRT" else "btc-usdt"
+        src_dst = symbol.lower().replace("irt", "-irt").replace("usdt", "-usdt")
         r = requests.post(url, json={"src": src_dst.split("-")[0], "dst": src_dst.split("-")[1]}, headers=headers, timeout=10)
         if r.status_code == 200:
             stats = r.json().get("stats", {})
@@ -102,56 +103,63 @@ def send_message(text):
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
-    global last_usdt_irt, last_btc_usdt
+    global last_usdt_irt, last_btc_usdt, last_xaut_irt
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
-    send_message(f"🤖 <b>ربات قیمت تتر و بیت‌کوین فعال شد!</b>\n⏰ ساعت ثبت: {current_time}")
+    send_message(f"🤖 <b>ربات قیمت تتر، طلا و بیت‌کوین فعال شد!</b>\n⏰ ساعت ثبت: {current_time}")
 
     while True:
         try:
             # دریافت قیمت‌ها از نوبیتکس
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
+            xaut_irt = fetch_nobitex_price("XAUTIRT")
 
             now_str = get_iran_time()
 
             # اگر هر کدام از قیمت‌ها دریافت نشد، ۵ ثانیه صبر کن
-            if usdt_irt is None or btc_usdt is None:
-                print(f"[{now_str}] دریافت کامل قیمت‌ها انجام نشد (USDT: {usdt_irt} | BTC: {btc_usdt})، ۵ ثانیه صبر...")
+            if usdt_irt is None or btc_usdt is None or xaut_irt is None:
+                print(f"[{now_str}] دریافت کامل انجام نشد (USDT: {usdt_irt} | BTC: {btc_usdt} | XAUT: {xaut_irt})، ۵ ثانیه صبر...")
                 time.sleep(5)
                 continue
 
-            # تبدیل قیمت تتر به ریال به تومان (در صورت نیاز)
+            # تبدیل قیمت تتر و طلا از ریال به تومان (در صورت نیاز)
             usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+            xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
             btc_usdt = round(btc_usdt, 2)
 
             # مقداردهی اولیه قیمت‌ها در اولین اجرا
-            if last_usdt_irt is None or last_btc_usdt is None:
+            if last_usdt_irt is None or last_btc_usdt is None or last_xaut_irt is None:
                 last_usdt_irt = usdt_irt
                 last_btc_usdt = btc_usdt
-                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند | USDT: {usdt_irt:,} | BTC: ${btc_usdt:,.2f}")
+                last_xaut_irt = xaut_irt
+                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند | USDT: {usdt_irt:,} | XAUT: {xaut_irt:,} | BTC: ${btc_usdt:,.2f}")
                 time.sleep(4)
                 continue
 
             # چک کردن تغییر در هر یک از قیمت‌ها
-            if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt):
+            if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt) or (xaut_irt != last_xaut_irt):
                 usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
                 btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
+                xaut_arrow = get_arrow(xaut_irt, last_xaut_irt)
 
                 message = (
                     f"⏰ <b>{now_str}</b>\n\n"
                     f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
+                    f"🥇 <b>تتر گلد (طلا):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
                     f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
                 )
                 
                 print(f"[{now_str}] قیمت تغییر کرد! ارسال به کانال...")
                 send_message(message)
 
+                # به‌روزرسانی مقادیر قبلی
                 last_usdt_irt = usdt_irt
                 last_btc_usdt = btc_usdt
+                last_xaut_irt = xaut_irt
             else:
-                print(f"[{now_str}] قیمت‌ها بدون تغییر | USDT: {usdt_irt:,} | BTC: ${btc_usdt:,.2f}")
+                print(f"[{now_str}] بدون تغییر | USDT: {usdt_irt:,} | XAUT: {xaut_irt:,} | BTC: ${btc_usdt:,.2f}")
 
         except Exception as e:
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
