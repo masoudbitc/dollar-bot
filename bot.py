@@ -22,7 +22,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره تاریخچه قیمت‌ها برای رسم چارت
+# ذخیره تاریخچه قیمت‌ها برای رسم چارت (حداکثر ۳۰ نقطه)
 btc_history = []
 gold_history = []
 time_history = []
@@ -154,42 +154,43 @@ def get_quickchart_url(labels, data, title, color="rgb(247, 147, 26)"):
     encoded = urllib.parse.quote(json_str)
     return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
 
-# ---- 3. پردازش ارسال چارت‌های تصویری ساعتی ----
+# ---- 3. پردازش ارسال چارت‌های تصویری (موقتاً هر ۲ دقیقه یک‌بار) ----
 def hourly_chart_loop():
-    """ارسال چارت‌های بیت‌کوین و انس طلا ۲۰ ثانیه بعد از روشن شدن و سپس هر ۱ ساعت"""
-    time.sleep(20)
+    """ارسال اولیه ۱۵ ثانیه بعد از استارت و سپس هر ۲ دقیقه (۱۲۰ ثانیه)"""
+    time.sleep(15)
     
     while True:
         try:
             now_str = get_iran_time()
             times = time_history if len(time_history) > 1 else [now_str[:5], now_str[:5]]
             
-            # ۱. چارت بیت‌کوین (رنگ نارنجی)
+            # ۱. چارت بیت‌کوین
             btc_prices = btc_history if len(btc_history) > 1 else ([last_btc_usdt, last_btc_usdt] if last_btc_usdt else [65000, 65000])
-            btc_chart_url = get_quickchart_url(times, btc_prices, "Bitcoin (BTC/USDT) Price Chart", "rgb(247, 147, 26)")
-            send_photo_url(btc_chart_url, f"📊 <b>چارت تغییرات قیمت بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
+            btc_chart_url = get_quickchart_url(times, btc_prices, "Bitcoin (BTC/USDT) 2-Min Chart Test", "rgb(247, 147, 26)")
+            send_photo_url(btc_chart_url, f"📊 <b>چارت نوسانات بیت‌کوین (تست ۲ دقیقه‌ای)</b>\n⏰ <b>{now_str}</b>")
             
-            time.sleep(3) # فاصله کوتاه بین ارسال دو عکس
+            time.sleep(3)
 
-            # ۲. چارت انس جهانی طلا (رنگ طلایی)
+            # ۲. چارت انس طلا
             gold_prices = gold_history if len(gold_history) > 1 else ([last_xau_usd, last_xau_usd] if last_xau_usd else [2300, 2300])
-            gold_chart_url = get_quickchart_url(times, gold_prices, "Gold (XAU/USD) Price Chart", "rgb(255, 215, 0)")
-            send_photo_url(gold_chart_url, f"📊 <b>چارت تغییرات انس جهانی طلا</b>\n⏰ <b>{now_str}</b>")
+            gold_chart_url = get_quickchart_url(times, gold_prices, "Gold (XAU/USD) 2-Min Chart Test", "rgb(255, 215, 0)")
+            send_photo_url(gold_chart_url, f"📊 <b>چارت نوسانات انس طلا (تست ۲ دقیقه‌ای)</b>\n⏰ <b>{now_str}</b>")
 
-            print(f"[{now_str}] هر دو چارت تصویری (بیت‌کوین و طلا) ارسال شدند.")
+            print(f"[{now_str}] چارت‌های تصویری تست با موفقیت ارسال شدند.")
         except Exception as e:
             print(f"خطا در ارسال چارت‌ها: {repr(e)}")
             
-        time.sleep(3600)
+        # ارسال هر ۱۲۰ ثانیه (۲ دقیقه)
+        time.sleep(120)
 
-# ---- 4. حلقه اصلی قیمت‌های لحظه‌ای ----
+# ---- 4. حلقه اصلی دریافت و چک کردن قیمت‌ها (هر ۳۰ ثانیه) ----
 def bot_loop():
     global last_usdt_bid, last_usdt_ask, last_btc_usdt
     global last_xau_usd, last_gold_18k_nobitex, last_gold_18k_global
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
-    send_message(f"🤖 <b>ربات فعال شد!</b>\n⏰ {current_time}")
+    send_message(f"🤖 <b>حالت تست چارت (ارسال هر ۲ دقیقه) فعال شد!</b>\n⏰ {current_time}")
 
     while True:
         try:
@@ -201,7 +202,6 @@ def bot_loop():
             usdt_bid, usdt_ask, usdt_last = fetch_nobitex_orderbook("USDTIRT")
             _, _, btc_last = fetch_nobitex_orderbook("BTCUSDT")
 
-            # اگر نوبیتکس بیت‌کوین نداد از CoinGecko بگیر
             if btc_last is None:
                 btc_last = fetch_btc_coingecko()
 
@@ -217,11 +217,11 @@ def bot_loop():
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0)) if xaut_irt_val else 0
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0)) if (xau_usd_val and usdt_toman) else 0
 
-                if xau_usd_val > 0 and (len(gold_history) == 0 or gold_history[-1] != xau_usd_val):
+                # ذخیره قیمت برای چارت
+                if xau_usd_val > 0:
                     gold_history.append(xau_usd_val)
                     if len(gold_history) > 30: gold_history.pop(0)
 
-                # شرط ارسال (ارسال بار اول یا در صورت تغییر)
                 if last_xau_usd is None or (xau_usd_val != last_xau_usd) or (gold_18k_nobitex != last_gold_18k_nobitex):
                     xau_arrow = get_arrow(xau_usd_val, last_xau_usd)
                     gold_nobitex_arrow = get_arrow(gold_18k_nobitex, last_gold_18k_nobitex)
@@ -239,7 +239,7 @@ def bot_loop():
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
 
-            time.sleep(3)
+            time.sleep(2)
 
             # --- بخش تتر و کریپتو ---
             if usdt_bid is not None or btc_last is not None:
@@ -247,14 +247,14 @@ def bot_loop():
                 usdt_ask_val = int(usdt_ask / 10) if (usdt_ask and usdt_ask > 100000) else int(usdt_ask or 0)
                 btc_usdt_val = round(btc_last, 2) if btc_last else 0.0
 
-                if btc_usdt_val > 0 and (len(btc_history) == 0 or btc_history[-1] != btc_usdt_val):
+                # ذخیره قیمت و زمان برای چارت
+                if btc_usdt_val > 0:
                     btc_history.append(btc_usdt_val)
                     time_history.append(now_str[:5])
                     if len(btc_history) > 30: 
                         btc_history.pop(0)
                         time_history.pop(0)
 
-                # شرط ارسال (ارسال بار اول یا در صورت تغییر)
                 if last_usdt_bid is None or (usdt_bid_val != last_usdt_bid) or (btc_usdt_val != last_btc_usdt):
                     usdt_bid_arrow = get_arrow(usdt_bid_val, last_usdt_bid)
                     usdt_ask_arrow = get_arrow(usdt_ask_val, last_usdt_ask)
@@ -272,12 +272,14 @@ def bot_loop():
                     last_usdt_ask = usdt_ask_val
                     last_btc_usdt = btc_usdt_val
 
-            print(f"[{get_iran_time()}] چرخه دریافت قیمت موفق بود.")
-            time.sleep(10)
+            print(f"[{get_iran_time()}] داده‌ها در تاریخچه ذخیره شدند.")
+            
+            # برحصور هر ۳۰ ثانیه یک‌بار قیمت‌ها دریافت و ثبت می‌شوند
+            time.sleep(30)
 
         except Exception as e:
             print(f"[{get_iran_time()}] خطا در حلقه اصلی: {repr(e)}")
-            time.sleep(10)
+            time.sleep(30)
 
 # ---- 5. اجرا ----
 if __name__ == "__main__":
