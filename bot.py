@@ -25,21 +25,13 @@ last_usdt_irt = None
 last_btc_usdt = None
 
 last_xau_usd = None
-last_xaut_irt = None
-last_xau_tether_irt = None
 last_gold_18k_nobitex = None
 last_gold_18k_global = None
-
-last_diff_val = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
     iran_offset = timezone(timedelta(hours=3, minutes=30))
     return datetime.now(iran_offset).strftime("%H:%M:%S")
-
-def round_to_nearest(number, step=5000):
-    """گرد کردن اعداد برای جلوگیری از نوسان‌های ریز و پرت"""
-    return int(round(number / step) * step)
 
 def fetch_nobitex_price(symbol):
     """دریافت قیمت از نوبیتکس"""
@@ -90,12 +82,13 @@ def fetch_tradingview_gold():
     return None
 
 def get_arrow(new_val, old_val):
+    """تنها استفاده از یک نماد جهت برای تمیزتر شدن پیام‌ها"""
     if old_val is None or new_val == old_val:
-        return "⚪️ ➖"
+        return "➖"
     elif new_val > old_val:
-        return "🟢 🔺"
+        return "🔺"
     else:
-        return "🔴 🔻"
+        return "🔻"
 
 def send_message(text):
     if not TOKEN:
@@ -111,8 +104,7 @@ def send_message(text):
 
 def bot_loop():
     global last_usdt_irt, last_btc_usdt
-    global last_xau_usd, last_xaut_irt, last_xau_tether_irt, last_gold_18k_nobitex, last_gold_18k_global
-    global last_diff_val
+    global last_xau_usd, last_gold_18k_nobitex, last_gold_18k_global
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -126,7 +118,7 @@ def bot_loop():
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
-            # 2. دریافت انس جهانی و انس تومانی نوبیتکس
+            # 2. دریافت انس جهانی و تترگلد نوبیتکس
             xau_usd = fetch_tradingview_gold()
             xaut_irt = fetch_nobitex_price("XAUTIRT")
 
@@ -151,73 +143,39 @@ def bot_loop():
                     last_usdt_irt = usdt_irt_val
                     last_btc_usdt = btc_usdt_val
 
-            # --- پیام دوم: بازار طلا (اصلاح عنوان‌ها به ترتیب درخواست‌شده) ---
+            # --- پیام دوم: بازار طلا ---
             if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
                 xau_usd_val = round(xau_usd, 2)
                 xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
                 usdt_toman = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
 
-                # محاسبه انس/تتر (انس جهانی ضرب در تتر)
-                xau_tether_irt_val = int(xau_usd_val * usdt_toman)
-
                 # محاسبات ۱۸ عیار
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
-                gold_18k_global = int((xau_tether_irt_val / 31.1034768) * (18.0 / 24.0))
+                gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0))
 
-                if last_xau_usd is None or last_xaut_irt is None or last_xau_tether_irt is None:
+                if last_xau_usd is None or last_gold_18k_nobitex is None or last_gold_18k_global is None:
                     last_xau_usd = xau_usd_val
-                    last_xaut_irt = xaut_irt_val
-                    last_xau_tether_irt = xau_tether_irt_val
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
-                elif (xau_usd_val != last_xau_usd) or (xaut_irt_val != last_xaut_irt) or \
-                     (xau_tether_irt_val != last_xau_tether_irt) or \
-                     (gold_18k_nobitex != last_gold_18k_nobitex) or (gold_18k_global != last_gold_18k_global):
+                elif (xau_usd_val != last_xau_usd) or \
+                     (gold_18k_nobitex != last_gold_18k_nobitex) or \
+                     (gold_18k_global != last_gold_18k_global):
 
                     xau_arrow = get_arrow(xau_usd_val, last_xau_usd)
-                    xaut_arrow = get_arrow(xaut_irt_val, last_xaut_irt)
-                    xau_tether_arrow = get_arrow(xau_tether_irt_val, last_xau_tether_irt)
                     gold_nobitex_arrow = get_arrow(gold_18k_nobitex, last_gold_18k_nobitex)
                     gold_global_arrow = get_arrow(gold_18k_global, last_gold_18k_global)
 
                     gold_msg = (
                         f"⏰ <b>{now_str}</b>\n"
                         f"🥇 <b>انس:</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
-                        f"💵 <b>انس/تومان:</b> {xaut_irt_val:,} تومان {xaut_arrow}\n"
-                        f"💎 <b>انس/تتر:</b> {xau_tether_irt_val:,} تومان {xau_tether_arrow}\n"
                         f"🔱 <b>طلا/تومان ۱۸عیار:</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
                         f"🌐 <b>طلا/تتر ۱۸عیار:</b> {gold_18k_global:,} تومان {gold_global_arrow}"
                     )
                     send_message(gold_msg)
 
                     last_xau_usd = xau_usd_val
-                    last_xaut_irt = xaut_irt_val
-                    last_xau_tether_irt = xau_tether_irt_val
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
-
-                # --- پیام سوم: مقایسه انس/تومان با انس/تتر ---
-                raw_diff = xaut_irt_val - xau_tether_irt_val
-                diff_val = round_to_nearest(raw_diff, 10000)
-
-                if last_diff_val is None:
-                    last_diff_val = diff_val
-                elif abs(diff_val - last_diff_val) >= 50000:
-                    diff_arrow = get_arrow(diff_val, last_diff_val)
-                    
-                    if abs(diff_val) < 10000:
-                        diff_text = "انس/تومان و انس/تتر کاملاً برابر هستند"
-                    elif diff_val > 0:
-                        diff_text = f"انس/تومان {diff_val:,} تومان گران‌تر است"
-                    else:
-                        diff_text = f"انس/تومان {abs(diff_val):,} تومان ارزان‌تر است"
-
-                    diff_msg = (
-                        f"⏰ <b>{now_str}</b>\n"
-                        f"⚖️ <b>{diff_text}</b> {diff_arrow}"
-                    )
-                    send_message(diff_msg)
-                    last_diff_val = diff_val
 
             print(f"[{now_str}] بررسی انجام شد.")
 
