@@ -151,13 +151,13 @@ def bot_loop():
                     last_usdt_irt = usdt_irt_val
                     last_btc_usdt = btc_usdt_val
 
-            # --- پیام دوم: بازار طلا (با اضافه شدن انس تتر) ---
+            # --- پیام دوم: بازار طلا (اصلاح عنوان‌ها به ترتیب درخواست‌شده) ---
             if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
                 xau_usd_val = round(xau_usd, 2)
                 xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
                 usdt_toman = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
 
-                # مولفه جدید: محاسبه انس تتر (ضرب انس جهانی در قیمت تتر)
+                # محاسبه انس/تتر (انس جهانی ضرب در تتر)
                 xau_tether_irt_val = int(xau_usd_val * usdt_toman)
 
                 # محاسبات ۱۸ عیار
@@ -182,11 +182,11 @@ def bot_loop():
 
                     gold_msg = (
                         f"⏰ <b>{now_str}</b>\n"
-                        f"🥇 <b>انس جهانی (تریدینگ‌ویو):</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
-                        f"💵 <b>انس تومانی (تترگلد نوبیتکس):</b> {xaut_irt_val:,} تومان {xaut_arrow}\n"
-                        f"💎 <b>انس تتر (محاسباتی):</b> {xau_tether_irt_val:,} تومان {xau_tether_arrow}\n"
-                        f"🔱 <b>طلای ۱۸ عیار (بر اساس تترگلد):</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
-                        f"🌐 <b>طلای ۱۸ عیار (بر اساس انس جهانی + تتر):</b> {gold_18k_global:,} تومان {gold_global_arrow}"
+                        f"🥇 <b>انس:</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
+                        f"💵 <b>انس/تومان:</b> {xaut_irt_val:,} تومان {xaut_arrow}\n"
+                        f"💎 <b>انس/تتر:</b> {xau_tether_irt_val:,} تومان {xau_tether_arrow}\n"
+                        f"🔱 <b>طلا/تومان ۱۸عیار:</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
+                        f"🌐 <b>طلا/تتر ۱۸عیار:</b> {gold_18k_global:,} تومان {gold_global_arrow}"
                     )
                     send_message(gold_msg)
 
@@ -196,7 +196,7 @@ def bot_loop():
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
 
-                # --- پیام سوم: مقایسه انس نوبیتکس با انس تتر ---
+                # --- پیام سوم: مقایسه انس/تومان با انس/تتر ---
                 raw_diff = xaut_irt_val - xau_tether_irt_val
                 diff_val = round_to_nearest(raw_diff, 10000)
 
@@ -206,11 +206,11 @@ def bot_loop():
                     diff_arrow = get_arrow(diff_val, last_diff_val)
                     
                     if abs(diff_val) < 10000:
-                        diff_text = "انس نوبیتکس و انس تتر کاملاً برابر هستند"
+                        diff_text = "انس/تومان و انس/تتر کاملاً برابر هستند"
                     elif diff_val > 0:
-                        diff_text = f"انس نوبیتکس {diff_val:,} تومان گران‌تر است"
+                        diff_text = f"انس/تومان {diff_val:,} تومان گران‌تر است"
                     else:
-                        diff_text = f"انس نوبیتکس {abs(diff_val):,} تومان ارزان‌تر است"
+                        diff_text = f"انس/تومان {abs(diff_val):,} تومان ارزان‌تر است"
 
                     diff_msg = (
                         f"⏰ <b>{now_str}</b>\n"
