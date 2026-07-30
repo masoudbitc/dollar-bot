@@ -36,6 +36,10 @@ def get_iran_time():
     iran_offset = timezone(timedelta(hours=3, minutes=30))
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
+def round_to_nearest(number, step=5000):
+    """گرد کردن اعداد برای جلوگیری از نوسان‌های ریز و پرت"""
+    return int(round(number / step) * step)
+
 def fetch_nobitex_price(symbol):
     """دریافت قیمت از نوبیتکس"""
     headers = {
@@ -117,11 +121,11 @@ def bot_loop():
         try:
             now_str = get_iran_time()
 
-            # 1. دریافت قیمت تتر و بیت‌کوین از نوبیتکس
+            # 1. دریافت قیمت تتر و بیت‌کوین
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
-            # 2. دریافت انس جهانی (تریدینگ‌ویو) و انس تومانی (تترگلد نوبیتکس)
+            # 2. دریافت انس جهانی و انس تومانی نوبیتکس
             xau_usd = fetch_tradingview_gold()
             xaut_irt = fetch_nobitex_price("XAUTIRT")
 
@@ -183,17 +187,21 @@ def bot_loop():
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
 
-                # --- پیام سوم: مقایسه ساده و روان انس نوبیتکس با انس جهانی ---
+                # --- پیام سوم: مقایسه دقیق و همگام‌شده ---
                 calculated_global_ounce_toman = int(xau_usd_val * usdt_toman)
-                diff_val = xaut_irt_val - calculated_global_ounce_toman
+                raw_diff = xaut_irt_val - calculated_global_ounce_toman
+                
+                # گرد کردن اختلاف به نزدیک‌ترین ۱۰,۰۰۰ تومان برای تثبیت اعداد
+                diff_val = round_to_nearest(raw_diff, 10000)
 
                 if last_diff_val is None:
                     last_diff_val = diff_val
-                elif diff_val != last_diff_val:
+                # تنها در صورتی که حداقل ۵۰,۰۰۰ تومان تغییر واقعی داشته باشد پیام می‌دهد
+                elif abs(diff_val - last_diff_val) >= 50000:
                     diff_arrow = get_arrow(diff_val, last_diff_val)
                     
-                    if diff_val == 0:
-                        diff_text = "انس نوبیتکس و انس جهانی کاملاً برابر هستند (۰)"
+                    if abs(diff_val) < 10000:
+                        diff_text = "انس نوبیتکس و انس جهانی کاملاً برابر هستند"
                     elif diff_val > 0:
                         diff_text = f"انس نوبیتکس {diff_val:,} تومان گران‌تر است"
                     else:
@@ -211,7 +219,7 @@ def bot_loop():
         except Exception as e:
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
 
-        time.sleep(5)
+        time.sleep(10) # افزایش زمان بررسی به ۱۰ ثانیه برای هماهنگی بیشتر
 
 # ---- 3. اجرا ----
 if __name__ == "__main__":
