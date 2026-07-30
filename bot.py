@@ -348,16 +348,7 @@ def bot_loop():
             time.sleep(10)
 
 # ---- 5. اجرا ----
-if __name__ == "__main__":
-    t_flask = threading.Thread(target=run_flask)
-    t_flask.daemon = True
-    t_flask.start()
 
-    t_chart = threading.Thread(target=hourly_chart_loop)
-    t_chart.daemon = True
-    t_chart.start()
-
-    bot_loop()
 if __name__ == "__main__":
     t_flask = threading.Thread(target=run_flask)
     t_flask.daemon = True
