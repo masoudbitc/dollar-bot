@@ -2,7 +2,6 @@ import os
 import requests
 import time
 import threading
-import cloudscraper
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
@@ -21,22 +20,12 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ساخت اسکراپر پایداری که سیستم‌های Cloudflare را رد می‌کند
-scraper = cloudscraper.create_scraper(
-    browser={
-        'browser': 'chrome',
-        'platform': 'windows',
-        'desktop': True
-    }
-)
-
+# ذخیره آخرین قیمت‌های ثبت شده
 last_usdt_irt = None
 last_btc_usdt = None
 
 last_xaut_irt = None
 last_gold_18k = None
-last_milli_price = None
-last_melligold_price = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
@@ -87,46 +76,8 @@ def fetch_nobitex_price(symbol):
 
     return None
 
-def fetch_milli_price():
-    """دریافت مستیقم قیمت هر گرم طلای ۱۸ عیار از میلی (Milli)"""
-    try:
-        url = "https://milli.gold/api/v1/price/latest"
-        r = scraper.get(url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            # استخراج دقیق قیمت خرید یا فروش از ساختار میلی
-            price = data.get("price") or data.get("buyPrice") or data.get("price18k")
-            if not price and isinstance(data, dict):
-                # اگر دیتای تو در تو باشد
-                price = data.get("data", {}).get("price") or data.get("data", {}).get("buyPrice")
-            
-            if price:
-                price = float(price)
-                # تبدیل ریال به تومان در صورت نیاز
-                return int(price / 10) if price > 10000000 else int(price)
-    except Exception as e:
-        print(f"[{get_iran_time()}] Milli Cloudscraper Error: {repr(e)}")
-    return None
-
-def fetch_melligold_price():
-    """دریافت مستقیم قیمت هر گرم طلای ۱۸ عیار از ملی‌گلد (Melli Gold)"""
-    try:
-        url = "https://melligold.com/api/v1/gold-price"
-        r = scraper.get(url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            price = data.get("price") or data.get("buy_price") or data.get("price_18")
-            if not price and isinstance(data, dict):
-                price = data.get("data", {}).get("price") or data.get("data", {}).get("buy_price")
-                
-            if price:
-                price = float(price)
-                return int(price / 10) if price > 10000000 else int(price)
-    except Exception as e:
-        print(f"[{get_iran_time()}] MelliGold Cloudscraper Error: {repr(e)}")
-    return None
-
 def get_arrow(new_val, old_val):
+    """تعیین فلش بر اساس تغییرات قیمت"""
     if old_val is None or new_val == old_val:
         return "⚪️ ➖"
     elif new_val > old_val:
@@ -151,7 +102,7 @@ def send_message(text):
 
 def bot_loop():
     global last_usdt_irt, last_btc_usdt
-    global last_xaut_irt, last_gold_18k, last_milli_price, last_melligold_price
+    global last_xaut_irt, last_gold_18k
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -165,10 +116,8 @@ def bot_loop():
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
-            # 2. دریافت قیمت‌های طلا
+            # 2. دریافت قیمت طلا (انس تترگلد)
             xaut_irt = fetch_nobitex_price("XAUTIRT")
-            milli_price = fetch_milli_price()
-            melligold_price = fetch_melligold_price()
 
             # پردازش تتر و بیت‌کوین
             if usdt_irt is not None and btc_usdt is not None:
@@ -193,42 +142,31 @@ def bot_loop():
                     last_usdt_irt = usdt_irt
                     last_btc_usdt = btc_usdt
 
-            # پردازش طلا
+            # پردازش طلا (انس تترگلد و گرم ۱۸ عیار)
             if xaut_irt is not None:
                 xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-                gold_18k = int((xaut_irt / 31.1034768) * (18 / 24))
+                
+                # محاسبه دقیق ۱ گرم طلای ۱۸ عیار بر اساس انس ۲۴ عیار
+                # (قیمت یک انس / 31.1034768) * (18 / 24)
+                gold_18k = int((xaut_irt / 31.1034768) * (18.0 / 24.0))
 
                 if last_xaut_irt is None or last_gold_18k is None:
                     last_xaut_irt = xaut_irt
                     last_gold_18k = gold_18k
-                    last_milli_price = milli_price
-                    last_melligold_price = melligold_price
-                elif (xaut_irt != last_xaut_irt) or (gold_18k != last_gold_18k) or \
-                     (milli_price != last_milli_price and milli_price is not None) or \
-                     (melligold_price != last_melligold_price and melligold_price is not None):
-
+                elif (xaut_irt != last_xaut_irt) or (gold_18k != last_gold_18k):
                     xaut_arrow = get_arrow(xaut_irt, last_xaut_irt)
                     gold_18k_arrow = get_arrow(gold_18k, last_gold_18k)
-                    milli_arrow = get_arrow(milli_price, last_milli_price) if milli_price else "⚪️ ➖"
-                    melligold_arrow = get_arrow(melligold_price, last_melligold_price) if melligold_price else "⚪️ ➖"
-
-                    milli_str = f"{milli_price:,} تومان" if milli_price else "در حال دریافت..."
-                    melligold_str = f"{melligold_price:,} تومان" if melligold_price else "در حال دریافت..."
 
                     gold_msg = (
                         f"⏰ <b>{now_str}</b> | 🏆 <b>بازار طلا</b>\n\n"
                         f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
-                        f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
-                        f"🟡 <b>طلای ۱۸ عیار (میلی):</b> {milli_str} {milli_arrow}\n"
-                        f"✨ <b>طلای ۱۸ عیار (ملی‌گلد):</b> {melligold_str} {melligold_arrow}"
+                        f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}"
                     )
                     print(f"[{now_str}] قیمت طلا تغییر کرد! ارسال به کانال...")
                     send_message(gold_msg)
 
                     last_xaut_irt = xaut_irt
                     last_gold_18k = gold_18k
-                    if milli_price: last_milli_price = milli_price
-                    if melligold_price: last_melligold_price = melligold_price
 
             print(f"[{now_str}] بررسی انجام شد.")
 
