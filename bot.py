@@ -82,7 +82,6 @@ def fetch_tradingview_gold():
     return None
 
 def get_arrow(new_val, old_val):
-    """تنها استفاده از یک نماد جهت برای تمیزتر شدن پیام‌ها"""
     if old_val is None or new_val == old_val:
         return "➖"
     elif new_val > old_val:
@@ -112,17 +111,13 @@ def bot_loop():
 
     while True:
         try:
-            now_str = get_iran_time()
-
-            # 1. دریافت قیمت تتر و بیت‌کوین
+            # -------------------------------------------------------------
+            # گام ۱: (ثانیه ۰) بررسی و ارسال پیام تتر و بیت‌کوین
+            # -------------------------------------------------------------
+            now_str_crypto = get_iran_time()
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
-            # 2. دریافت انس جهانی و تترگلد نوبیتکس
-            xau_usd = fetch_tradingview_gold()
-            xaut_irt = fetch_nobitex_price("XAUTIRT")
-
-            # --- پیام اول: بازار ارز و دیجیتال ---
             if usdt_irt is not None and btc_usdt is not None:
                 usdt_irt_val = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
                 btc_usdt_val = round(btc_usdt, 2)
@@ -135,7 +130,7 @@ def bot_loop():
                     btc_arrow = get_arrow(btc_usdt_val, last_btc_usdt)
 
                     crypto_msg = (
-                        f"⏰ <b>{now_str}</b>\n"
+                        f"⏰ <b>{now_str_crypto}</b>\n"
                         f"💵 <b>تتر:</b> {usdt_irt_val:,} تومان {usdt_arrow}\n"
                         f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {btc_arrow}"
                     )
@@ -143,8 +138,19 @@ def bot_loop():
                     last_usdt_irt = usdt_irt_val
                     last_btc_usdt = btc_usdt_val
 
-            # --- پیام دوم: بازار طلا ---
+            # -------------------------------------------------------------
+            # توقف دقیقا به مدت ۵ ثانیه قبل از بررسی بازار طلا
+            # -------------------------------------------------------------
+            time.sleep(5)
+
+            # -------------------------------------------------------------
+            # گام ۲: (ثانیه ۵) بررسی و ارسال پیام انس و طلا
+            # -------------------------------------------------------------
+            xau_usd = fetch_tradingview_gold()
+            xaut_irt = fetch_nobitex_price("XAUTIRT")
+
             if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
+                now_str_gold = get_iran_time()
                 xau_usd_val = round(xau_usd, 2)
                 xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
                 usdt_toman = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
@@ -166,7 +172,7 @@ def bot_loop():
                     gold_global_arrow = get_arrow(gold_18k_global, last_gold_18k_global)
 
                     gold_msg = (
-                        f"⏰ <b>{now_str}</b>\n"
+                        f"⏰ <b>{now_str_gold}</b>\n"
                         f"🥇 <b>انس:</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
                         f"🔱 <b>طلا/تومان ۱۸عیار:</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
                         f"🌐 <b>طلا/تتر ۱۸عیار:</b> {gold_18k_global:,} تومان {gold_global_arrow}"
@@ -177,12 +183,16 @@ def bot_loop():
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
 
-            print(f"[{now_str}] بررسی انجام شد.")
+            print(f"[{get_iran_time()}] چرخه ۱۰ ثانیه‌ای کامل شد.")
+
+            # -------------------------------------------------------------
+            # ۵ ثانیه استراحت دوم جهت تکمیل کل زمان ۱۰ ثانیه‌ای چرخه
+            # -------------------------------------------------------------
+            time.sleep(5)
 
         except Exception as e:
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
-
-        time.sleep(10)
+            time.sleep(5)
 
 # ---- 3. اجرا ----
 if __name__ == "__main__":
