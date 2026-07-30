@@ -106,7 +106,7 @@ def bot_loop():
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
-    send_message(f"🤖 <b>ربات قیمت ارز و طلا فعال شد!</b>\n⏰ ساعت ثبت: {current_time}")
+    send_message(f"🤖 <b>ربات فعال شد!</b>\n⏰ {current_time}")
 
     while True:
         try:
@@ -132,7 +132,7 @@ def bot_loop():
                     btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
 
                     crypto_msg = (
-                        f"⏰ <b>{now_str}</b> | 💱 <b>بازار ارز و دیجیتال</b>\n\n"
+                        f"⏰ <b>{now_str}</b>\n"
                         f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
                         f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
                     )
@@ -145,9 +145,6 @@ def bot_loop():
             # پردازش طلا (انس تترگلد و گرم ۱۸ عیار)
             if xaut_irt is not None:
                 xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-                
-                # محاسبه دقیق ۱ گرم طلای ۱۸ عیار بر اساس انس ۲۴ عیار
-                # (قیمت یک انس / 31.1034768) * (18 / 24)
                 gold_18k = int((xaut_irt / 31.1034768) * (18.0 / 24.0))
 
                 if last_xaut_irt is None or last_gold_18k is None:
@@ -158,7 +155,7 @@ def bot_loop():
                     gold_18k_arrow = get_arrow(gold_18k, last_gold_18k)
 
                     gold_msg = (
-                        f"⏰ <b>{now_str}</b> | 🏆 <b>بازار طلا</b>\n\n"
+                        f"⏰ <b>{now_str}</b>\n"
                         f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
                         f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}"
                     )
