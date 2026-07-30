@@ -6,7 +6,6 @@ import io
 import matplotlib
 matplotlib.use('Agg')  # اجرای بدون محیط گرافیکی سرور
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
@@ -25,7 +24,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره تاریخچه قیمت‌ها برای رسم چارت (حداکثر ۶۰ نقطه معادل ۱ ساعت)
+# ذخیره تاریخچه قیمت‌ها برای رسم چارت
 btc_history = []
 gold_history = []
 time_history = []
@@ -44,7 +43,7 @@ def get_iran_time():
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
 def fetch_nobitex_orderbook(symbol):
-    """دریافت بهترین قیمت خرید (Bid) و بهترین قیمت فروش (Ask) از نوبیتکس"""
+    """دریافت قیمت از نوبیتکس"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
@@ -116,24 +115,20 @@ def send_photo_bytes(image_bytes, caption):
     except Exception as e:
         print(f"[{get_iran_time()}] استثنا در ارسال عکس: {repr(e)}")
 
-def generate_pro_chart(prices, times, title, main_color='#00F0FF', fill_color='#00F0FF22'):
-    """رسم یک چارت مدرن و پیشرفته با تم تاریک سبک تریدینگ‌ویو"""
+def generate_pro_chart(prices, times, title, main_color='#00F0FF'):
+    """رسم چارت تاریک مدرن"""
     plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
     
-    # رنگ پس‌زمینه
     fig.patch.set_facecolor('#131722')
     ax.set_facecolor('#131722')
 
-    # رسم خط قیمت و سایه زیر آن
-    ax.plot(times, prices, color=main_color, linewidth=2.5, label='Price')
+    ax.plot(times, prices, color=main_color, linewidth=2.5)
     ax.fill_between(times, prices, min(prices) * 0.999, color=main_color, alpha=0.15)
 
-    # تنظیمات عنوان و شبکه‌بندی
     ax.set_title(title, fontsize=14, fontweight='bold', color='#FFFFFF', pad=15)
     ax.grid(True, linestyle='--', color='#2A2E39', alpha=0.7)
 
-    # تزیین محورها
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color('#2A2E39')
@@ -142,7 +137,6 @@ def generate_pro_chart(prices, times, title, main_color='#00F0FF', fill_color='#
     plt.xticks(rotation=30, fontsize=8, color='#B2B5BE')
     plt.yticks(fontsize=9, color='#B2B5BE')
     
-    # نمایش آخرین قیمت در انتهای چارت
     if prices:
         last_price = prices[-1]
         ax.annotate(f' ${last_price:,.2f}', 
@@ -161,33 +155,24 @@ def generate_pro_chart(prices, times, title, main_color='#00F0FF', fill_color='#
 
 # ---- 3. پردازش ارسال چارت‌های تصویری ساعتی ----
 def hourly_chart_loop():
-    """ارسال چارت واقعی پس از ۲۰ دقیقه تجمع داده، و سپس هر ۱ ساعت یک‌بار"""
-    # ۱۰ دقیقه صبر اولیه تا ربات حداقل چند نقطه واقعی قیمت ذخیره کند
-    time.sleep(600) 
+    """ارسال چارت‌های تصویری هر ۱ ساعت یک‌بار"""
+    time.sleep(300) # ۵ دقیقه اول برای جمع‌آوری چند قیمت اول
     
     while True:
         try:
             now_str = get_iran_time()
-            
-            # اگر حداقل ۵ نقطه واقعی ثبت شده باشد چارت ارسال می‌شود
-            if len(btc_history) >= 5 and len(gold_history) >= 5:
-                # ۱. چارت بیت‌کوین (رنگ نارنجی کریپتویی)
+            if len(btc_history) >= 2 and len(gold_history) >= 2:
                 btc_bytes = generate_pro_chart(btc_history, time_history, "BTC/USDT 1-Hour Chart", main_color='#F7931A')
                 send_photo_bytes(btc_bytes, f"📊 <b>چارت نوسانات بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
                 time.sleep(3)
 
-                # ۲. چارت انس طلا (رنگ طلایی)
                 gold_bytes = generate_pro_chart(gold_history, time_history, "XAU/USD Gold Chart", main_color='#FFD700')
                 send_photo_bytes(gold_bytes, f"📊 <b>چارت نوسانات انس جهانی طلا</b>\n⏰ <b>{now_str}</b>")
 
-                print(f"[{now_str}] تصاویر چارت‌های واقعی با موفقیت ارسال شدند.")
-            else:
-                print(f"[{now_str}] داده‌های واقعی هنوز کافی نیستند (کمتر از ۵ نقطه).")
-            
+                print(f"[{now_str}] تصاویر چارت ارسال شدند.")
         except Exception as e:
-            print(f"خطا در ایجاد/ارسال چارت: {repr(e)}")
+            print(f"خطا در ارسال چارت: {repr(e)}")
             
-        # هر ۳۶۰۰ ثانیه (۱ ساعت) ارسال مجدد
         time.sleep(3600)
 
 # ---- 4. حلقه اصلی قیمت‌های لحظه‌ای ----
@@ -225,13 +210,10 @@ def bot_loop():
                     gold_history.append(xau_usd_val)
                     if len(gold_history) > 60: gold_history.pop(0)
 
-                if last_xau_usd is None or last_gold_18k_nobitex is None or last_gold_18k_global is None:
-                    last_xau_usd = xau_usd_val
-                    last_gold_18k_nobitex = gold_18k_nobitex
-                    last_gold_18k_global = gold_18k_global
-                elif (xau_usd_val != last_xau_usd) or \
-                     (gold_18k_nobitex != last_gold_18k_nobitex) or \
-                     (gold_18k_global != last_gold_18k_global):
+                # شرط ارسال: بار اول (ارسال حتمی) یا تغییر قیمت در نوبت‌های بعد
+                if last_xau_usd is None or (xau_usd_val != last_xau_usd) or \
+                   (gold_18k_nobitex != last_gold_18k_nobitex) or \
+                   (gold_18k_global != last_gold_18k_global):
 
                     xau_arrow = get_arrow(xau_usd_val, last_xau_usd)
                     gold_nobitex_arrow = get_arrow(gold_18k_nobitex, last_gold_18k_nobitex)
@@ -262,7 +244,7 @@ def bot_loop():
                 usdt_ask_val = int(usdt_ask / 10) if usdt_ask > 100000 else int(usdt_ask)
                 btc_usdt_val = round(btc_last, 2)
 
-                # ذخیره قیمت‌های بیت‌کوین و زمان جهت رسم چارت
+                # ذخیره قیمت‌های بیت‌کوین جهت چارت
                 if len(btc_history) == 0 or btc_history[-1] != btc_usdt_val:
                     btc_history.append(btc_usdt_val)
                     time_history.append(now_str_crypto[:5])
@@ -270,11 +252,10 @@ def bot_loop():
                         btc_history.pop(0)
                         time_history.pop(0)
 
-                if last_usdt_bid is None or last_usdt_ask is None or last_btc_usdt is None:
-                    last_usdt_bid = usdt_bid_val
-                    last_usdt_ask = usdt_ask_val
-                    last_btc_usdt = btc_usdt_val
-                elif (usdt_bid_val != last_usdt_bid) or (usdt_ask_val != last_usdt_ask) or (btc_usdt_val != last_btc_usdt):
+                # شرط ارسال: بار اول (ارسال حتمی) یا تغییر قیمت در نوبت‌های بعد
+                if last_usdt_bid is None or (usdt_bid_val != last_usdt_bid) or \
+                   (usdt_ask_val != last_usdt_ask) or (btc_usdt_val != last_btc_usdt):
+                    
                     usdt_bid_arrow = get_arrow(usdt_bid_val, last_usdt_bid)
                     usdt_ask_arrow = get_arrow(usdt_ask_val, last_usdt_ask)
                     btc_arrow = get_arrow(btc_usdt_val, last_btc_usdt)
@@ -286,6 +267,7 @@ def bot_loop():
                         f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {btc_arrow}"
                     )
                     send_message(crypto_msg)
+                    
                     last_usdt_bid = usdt_bid_val
                     last_usdt_ask = usdt_ask_val
                     last_btc_usdt = btc_usdt_val
