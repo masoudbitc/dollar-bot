@@ -101,6 +101,61 @@ def send_message(text):
     except Exception as e:
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
+def send_photo(photo_url, caption):
+    """ارسال تصویر همراه با توضیحات به تلگرام"""
+    if not TOKEN:
+        return
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+        payload = {
+            "chat_id": CHAT_ID,
+            "photo": photo_url,
+            "caption": caption,
+            "parse_mode": "HTML"
+        }
+        res = requests.post(url, data=payload, timeout=15)
+        if res.status_code != 200:
+            print(f"[{get_iran_time()}] خطا در ارسال عکس به تلگرام: {res.status_code} - {res.text[:100]}")
+    except Exception as e:
+        print(f"[{get_iran_time()}] استثنا در ارسال عکس: {repr(e)}")
+
+# ---- 3. پردازش ارسال چارت‌های ۱ ساعته ----
+def hourly_chart_loop():
+    """ارسال چارت بیت‌کوین، انس و تتر؛ بلافاصله در استارت و سپس هر ۱ ساعت"""
+    time.sleep(10) # ۱۰ ثانیه صبر پس از روشن شدن ربات برای اولین تست
+    
+    while True:
+        try:
+            now_str = get_iran_time()
+            
+            # لینک‌های تصویر چارت ۱ ساعته (Interval: 60)
+            btc_chart_url = "https://charts2.tradingview.com/chart-image/?symbol=BINANCE:BTCUSDT&interval=60&theme=light"
+            gold_chart_url = "https://charts2.tradingview.com/chart-image/?symbol=TVC:GOLD&interval=60&theme=light"
+            usdt_chart_url = "https://charts2.tradingview.com/chart-image/?symbol=CRYPTO:USDTIRR&interval=60&theme=light"
+            
+            # ۱. ارسال چارت بیت‌کوین
+            btc_caption = f"📊 <b>چارت ۱ ساعته بیت‌کوین (BTC/USDT)</b>\n⏰ <b>{now_str}</b>\n🌐 <i>TradingView</i>"
+            send_photo(btc_chart_url, btc_caption)
+            time.sleep(3)
+            
+            # ۲. ارسال چارت انس جهانی طلا
+            gold_caption = f"📊 <b>چارت ۱ ساعته انس جهانی طلا (XAU/USD)</b>\n⏰ <b>{now_str}</b>\n🌐 <i>TradingView</i>"
+            send_photo(gold_chart_url, gold_caption)
+            time.sleep(3)
+
+            # ۳. ارسال چارت تتر به ریال/تومان
+            usdt_caption = f"📊 <b>چارت ۱ ساعته تتر (USDT/IRR)</b>\n⏰ <b>{now_str}</b>\n🌐 <i>TradingView</i>"
+            send_photo(usdt_chart_url, usdt_caption)
+            
+            print(f"[{now_str}] چارت‌های تصویری با موفقیت در کانال منتشر شدند.")
+            
+        except Exception as e:
+            print(f"خطا در ارسال چارت تصویری: {repr(e)}")
+            
+        # ۳۶۰۰ ثانیه استراحت (معادل ۱ ساعت) تا نوبت بعدی
+        time.sleep(3600)
+
+# ---- 4. حلقه اصلی قیمت‌های لحظه‌ای ----
 def bot_loop():
     global last_usdt_bid, last_usdt_ask, last_btc_usdt
     global last_xau_usd, last_gold_18k_nobitex, last_gold_18k_global
@@ -205,9 +260,17 @@ def bot_loop():
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
             time.sleep(5)
 
-# ---- 3. اجرا ----
+# ---- 5. اجرا ----
 if __name__ == "__main__":
-    t = threading.Thread(target=run_flask)
-    t.daemon = True
-    t.start()
+    # ۱. اجرای وب‌سرور Flask
+    t_flask = threading.Thread(target=run_flask)
+    t_flask.daemon = True
+    t_flask.start()
+
+    # ۲. اجرای پردازش ساعتی ارسال چارت‌ها در پس‌زمینه
+    t_chart = threading.Thread(target=hourly_chart_loop)
+    t_chart.daemon = True
+    t_chart.start()
+
+    # ۳. اجرای حلقه اصلی ارسال قیمت‌ها
     bot_loop()
