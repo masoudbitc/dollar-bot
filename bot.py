@@ -4,6 +4,7 @@ import time
 import threading
 import json
 import urllib.parse
+import jdatetime
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
@@ -22,8 +23,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره تاریخچه داده‌های OHLC برای نمودار کندلی (حداکثر ۱۲ کندل ساعتی)
-# ساختار هر کندل: [Open, High, Low, Close]
+# ذخیره تاریخچه داده‌های OHLC برای نمودار کندلی (حداکثر ۲۴ کندل)
 btc_ohlc_history = []
 gold_ohlc_history = []
 time_history = []
@@ -40,10 +40,14 @@ last_xau_usd = None
 last_gold_18k_nobitex = None
 last_gold_18k_global = None
 
-def get_iran_time():
-    """دریافت زمان دقیق ایران (UTC + 3:30)"""
+def get_iran_datetime():
+    """دریافت datetime دقیق ایران (UTC + 3:30)"""
     iran_offset = timezone(timedelta(hours=3, minutes=30))
-    return datetime.now(iran_offset).strftime("%H:%M:%S")
+    return datetime.now(iran_offset)
+
+def get_iran_time():
+    """دریافت زمان متنی دقیق ایران"""
+    return get_iran_datetime().strftime("%H:%M:%S")
 
 def fetch_nobitex_orderbook(symbol):
     """دریافت قیمت از نوبیتکس"""
@@ -132,7 +136,6 @@ def send_photo_url(photo_url, caption):
 
 def get_candlestick_chart_url(labels, ohlc_data, title):
     """تولید نمودار کندلی (Candlestick) حرفه‌ای با QuickChart"""
-    # ساختار ohlc_data باید فهرستی از لیست‌های [o, h, l, c] باشد
     formatted_data = []
     for d in ohlc_data:
         formatted_data.append({"o": d[0], "h": d[1], "l": d[2], "c": d[3]})
@@ -164,25 +167,45 @@ def get_candlestick_chart_url(labels, ohlc_data, title):
     encoded = urllib.parse.quote(json_str)
     return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=420&c={encoded}"
 
-# ---- 3. ارسال ساعتی چارت‌های تصویری کندلی (هر ۶۰ دقیقه) ----
+# ---- 3. ارسال چارت‌ها با زمان‌بندی‌های اختصاصی ----
+def publish_charts(timeframe_title, tf_code):
+    """ارسال چارت‌های بیت‌کوین و طلا با مشخص بودن تایم‌فریم زیر عکس"""
+    now_str = get_iran_time()
+    
+    caption_btc = f"📊 <b>نمودار بیت‌کوین (BTC/USDT)</b>\n⏱ <b>تایم‌فریم:</b> {timeframe_title}\n⏰ <b>زمان بروزرسانی:</b> {now_str}"
+    caption_gold = f"📊 <b>نمودار انس جهانی طلا (XAU/USD)</b>\n⏱ <b>تایم‌فریم:</b> {timeframe_title}\n⏰ <b>زمان بروزرسانی:</b> {now_str}"
+
+    if btc_ohlc_history and gold_ohlc_history:
+        btc_chart_url = get_candlestick_chart_url(time_history, btc_ohlc_history, f"Bitcoin (BTC/USDT) - {tf_code}")
+        send_photo_url(btc_chart_url, caption_btc)
+
+        time.sleep(3)
+
+        gold_chart_url = get_candlestick_chart_url(time_history, gold_ohlc_history, f"Gold (XAU/USD) - {tf_code}")
+        send_photo_url(gold_chart_url, caption_gold)
+
 def hourly_chart_loop():
-    """انتظار تا انتهای ساعت متداول و سپس ارسال چارت کندلی در انتهای هر ساعت"""
-    time.sleep(30)  # انتظار اولیه جهت شروع مطمئن
+    """حلقه مدیریت ثبت داده‌ها و زمان‌بندی ارسال چارت‌ها"""
+    time.sleep(10)
     
     while True:
         try:
-            now = datetime.now()
+            now = get_iran_datetime()
             # محاسبه زمان باقی‌مانده تا سر ساعت بعدی
             next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
             wait_seconds = (next_hour - now).total_seconds()
             
-            print(f"[{get_iran_time()}] چارت ساعتی بعدی در {int(wait_seconds)} ثانیه دیگر ارسال می‌شود.")
+            print(f"[{get_iran_time()}] چارت بعدی در {int(wait_seconds)} ثانیه دیگر بررسی/ارسال می‌شود.")
             time.sleep(wait_seconds)
 
-            now_str = get_iran_time()
-            hour_label = now_str[:5]
+            now = get_iran_datetime()
+            now_str = now.strftime("%H:%M:%S")
+            hour_label = now.strftime("%H:%M")
 
-            # محاسبه کندل ساعتی بیت‌کوین (Open, High, Low, Close)
+            # تبدیل تاریخ به تاریخ شمسی
+            j_now = jdatetime.datetime.fromgregorian(datetime=now)
+
+            # ۱. ثبت کندل ساعتی بیت‌کوین
             if current_btc_prices:
                 o_btc = current_btc_prices[0]
                 h_btc = max(current_btc_prices)
@@ -194,7 +217,7 @@ def hourly_chart_loop():
                 p = last_btc_usdt or 65000.0
                 btc_ohlc_history.append([p, p, p, p])
 
-            # محاسبه کندل ساعتی طلا
+            # ۲. ثبت کندل ساعتی طلا
             if current_gold_prices:
                 o_gold = current_gold_prices[0]
                 h_gold = max(current_gold_prices)
@@ -208,25 +231,33 @@ def hourly_chart_loop():
 
             time_history.append(hour_label)
 
-            # مدیریت طول تاریخچه کندل‌ها (حداکثر ۱۲ کندل اخیر)
-            if len(btc_ohlc_history) > 12: btc_ohlc_history.pop(0)
-            if len(gold_ohlc_history) > 12: gold_ohlc_history.pop(0)
-            if len(time_history) > 12: time_history.pop(0)
+            # مدیریت طول تاریخچه کندل‌ها (حداکثر ۲۴ کندل ساعتی)
+            if len(btc_ohlc_history) > 24: btc_ohlc_history.pop(0)
+            if len(gold_ohlc_history) > 24: gold_ohlc_history.pop(0)
+            if len(time_history) > 24: time_history.pop(0)
 
-            # ۱. ارسال چارت کندلی بیت‌کوین
-            btc_chart_url = get_candlestick_chart_url(time_history, btc_ohlc_history, "Bitcoin (BTC/USDT) Hourly Candlestick")
-            send_photo_url(btc_chart_url, f"📊 <b>نمودار کندلی بیت‌کوین (ساعتی)</b>\n⏰ <b>{now_str}</b>")
+            # ----------------- زمان‌بندی دقیق راس ساعت ۲۱:۰۰ -----------------
+            if now.hour == 21:
+                # ۱. ارسال روزانه چارت ۲۴ ساعته
+                publish_charts("۲۴ ساعته (24h)", "24-Hour Chart")
+                time.sleep(3)
 
-            time.sleep(3)
+                # ۲. ارسال چارت هفتگی در روزهای جمعه (جمعه = 4)
+                if now.weekday() == 4:
+                    publish_charts("هفتگی (Weekly)", "Weekly Chart")
+                    time.sleep(3)
 
-            # ۲. ارسال چارت کندلی انس طلا
-            gold_chart_url = get_candlestick_chart_url(time_history, gold_ohlc_history, "Gold (XAU/USD) Hourly Candlestick")
-            send_photo_url(gold_chart_url, f"📊 <b>نمودار کندلی انس طلا (ساعتی)</b>\n⏰ <b>{now_str}</b>")
+                # ۳. ارسال چارت ماهانه در اول هر ماه شمسی
+                if j_now.day == 1:
+                    publish_charts("ماهانه شمسی (Monthly)", "Monthly Chart")
+                    time.sleep(3)
 
-            print(f"[{now_str}] نمودارهای کندلی ساعتی ارسال شدند.")
+                # ۴. ارسال چارت سالانه در اول هر فصل شمسی (۱ فروردین، ۱ تیر، ۱ مهر، ۱ دی)
+                if j_now.day == 1 and j_now.month in [1, 4, 7, 10]:
+                    publish_charts("سالانه / فصلی (Yearly)", "Yearly Chart")
 
         except Exception as e:
-            print(f"خطا در ارسال نمودارهای ساعتی: {repr(e)}")
+            print(f"خطا در ارسال نمودارها: {repr(e)}")
             time.sleep(60)
 
 # ---- 4. حلقه اصلی دریافت قیمت‌ها (چک کردن تغییرات هر ۱۰ ثانیه) ----
