@@ -85,16 +85,13 @@ def fetch_milli_price():
         "Accept": "application/json, text/plain, */*"
     }
     try:
-        # فراخوانی ای‌پای عمومی میلی
         url = "https://milli.gold/api/v1/price/latest"
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            # استخراج قیمت هر گرم یا هر میلی‌گرم
             price = data.get("price") or data.get("buyPrice") or data.get("data", {}).get("price")
             if price:
                 price = float(price)
-                # در صورت ریال بودن به تومان تبدیل می‌شود
                 return int(price / 10) if price > 10000000 else int(price)
     except Exception as e:
         print(f"[{get_iran_time()}] Milli gold fetch error: {repr(e)}")
@@ -155,7 +152,7 @@ def bot_loop():
         try:
             now_str = get_iran_time()
 
-            # 1. دریافت قیمت‌های ارز و کریپتو
+            # 1. دریافت قیمت‌های ارز و دیجیتال
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
@@ -164,12 +161,11 @@ def bot_loop():
             milli_price = fetch_milli_price()
             melligold_price = fetch_melligold_price()
 
-            # پردازش تتر و بیت کوین
+            # پردازش تتر و بیت‌کوین
             if usdt_irt is not None and btc_usdt is not None:
                 usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
                 btc_usdt = round(btc_usdt, 2)
 
-                # اولین مقداردهی یا تغییر در دلار/بیت‌کوین
                 if last_usdt_irt is None or last_btc_usdt is None:
                     last_usdt_irt = usdt_irt
                     last_btc_usdt = btc_usdt
@@ -191,10 +187,8 @@ def bot_loop():
             # پردازش طلا
             if xaut_irt is not None:
                 xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-                # فرمول تبدیل هر انس تترگلد به یک گرم طلای ۱۸ عیار
                 gold_18k = int((xaut_irt / 31.1034768) * (18 / 24))
 
-                # اولین مقداردهی طلا
                 if last_xaut_irt is None or last_gold_18k is None:
                     last_xaut_irt = xaut_irt
                     last_gold_18k = gold_18k
@@ -215,7 +209,7 @@ def bot_loop():
                     gold_msg = (
                         f"⏰ <b>{now_str}</b> | 🏆 <b>بازار طلا</b>\n\n"
                         f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
-                        f"🔱 <b>هر گرم تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
+                        f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
                         f"🟡 <b>طلای ۱۸ عیار (میلی):</b> {milli_str} {milli_arrow}\n"
                         f"✨ <b>طلای ۱۸ عیار (ملی‌گلد):</b> {melligold_str} {melligold_arrow}"
                     )
