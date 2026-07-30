@@ -29,6 +29,8 @@ last_xaut_irt = None
 last_gold_18k_nobitex = None
 last_gold_18k_global = None
 
+last_diff_val = None
+
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
     iran_offset = timezone(timedelta(hours=3, minutes=30))
@@ -105,6 +107,7 @@ def send_message(text):
 def bot_loop():
     global last_usdt_irt, last_btc_usdt
     global last_xau_usd, last_xaut_irt, last_gold_18k_nobitex, last_gold_18k_global
+    global last_diff_val
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -122,7 +125,7 @@ def bot_loop():
             xau_usd = fetch_tradingview_gold()
             xaut_irt = fetch_nobitex_price("XAUTIRT")
 
-            # پردازش و ارسال قیمت‌های بازار ارز و دیجیتال
+            # --- پیام اول: بازار ارز و دیجیتال ---
             if usdt_irt is not None and btc_usdt is not None:
                 usdt_irt_val = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
                 btc_usdt_val = round(btc_usdt, 2)
@@ -143,16 +146,14 @@ def bot_loop():
                     last_usdt_irt = usdt_irt_val
                     last_btc_usdt = btc_usdt_val
 
-            # پردازش و ارسال ۴ قیمت طلا
+            # --- پیام دوم: بازار طلا (۴ قیمت اصلی) ---
             if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
                 xau_usd_val = round(xau_usd, 2)
                 xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-
-                # محاسبه ۳: طلای ۱۸ عیار بر اساس تترگلد نوبیتکس
-                gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
-
-                # محاسبه ۴: طلای ۱۸ عیار بر اساس انس جهانی + تتر نوبیتکس
                 usdt_toman = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+
+                # محاسبات ۱۸ عیار
+                gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0))
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0))
 
                 if last_xau_usd is None or last_xaut_irt is None:
@@ -181,6 +182,29 @@ def bot_loop():
                     last_xaut_irt = xaut_irt_val
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
+
+                # --- پیام سوم: محاسبه اختلاف/حباب انس در پیام جداگانه ---
+                calculated_ounce_irt = int(xau_usd_val * usdt_toman)
+                diff_val = xaut_irt_val - calculated_ounce_irt
+
+                if last_diff_val is None:
+                    last_diff_val = diff_val
+                elif diff_val != last_diff_val:
+                    diff_arrow = get_arrow(diff_val, last_diff_val)
+                    
+                    if diff_val == 0:
+                        diff_str = "0"
+                    elif diff_val > 0:
+                        diff_str = f"+{diff_val:,}"
+                    else:
+                        diff_str = f"-{abs(diff_val):,}"
+
+                    diff_msg = (
+                        f"⏰ <b>{now_str}</b>\n"
+                        f"📊 <b>اختلاف انس تومانی نوبیتکس با انس دلاری:</b> {diff_str} تومان {diff_arrow}"
+                    )
+                    send_message(diff_msg)
+                    last_diff_val = diff_val
 
             print(f"[{now_str}] بررسی انجام شد.")
 
