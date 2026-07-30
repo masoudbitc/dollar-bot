@@ -155,7 +155,7 @@ def bot_loop():
                     f"⏰ <b>{now_str}</b>\n\n"
                     f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
                     f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
-                    f"🔱 <b>هر گرم تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
+                    f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
                     f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
                 )
                 
