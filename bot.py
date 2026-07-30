@@ -23,8 +23,11 @@ CHAT_ID = -1003721340249
 # ذخیره آخرین قیمت‌های ثبت شده
 last_usdt_irt = None
 last_btc_usdt = None
+
 last_xaut_irt = None
 last_gold_18k = None
+last_milli_price = None
+last_melligold_price = None
 
 def get_iran_time():
     """دریافت زمان دقیق ایران (UTC + 3:30)"""
@@ -37,7 +40,6 @@ def fetch_nobitex_price(symbol):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # روش اول: استفاده از endpoint اصلی orderbook
     try:
         url = f"https://apiv2.nobitex.ir/v3/orderbook/{symbol}"
         r = requests.get(url, headers=headers, timeout=10)
@@ -58,12 +60,9 @@ def fetch_nobitex_price(symbol):
                 return best_bid
             if best_ask is not None:
                 return best_ask
-        else:
-            print(f"[{get_iran_time()}] Orderbook {symbol} status code: {r.status_code}")
     except Exception as e:
-        print(f"[{get_iran_time()}] Orderbook error for {symbol}: {repr(e)}")
+        print(f"[{get_iran_time()}] Nobitex error for {symbol}: {repr(e)}")
 
-    # روش دوم (جایگزین): دریافت از endpoint آمار بازار
     try:
         url = "https://api.nobitex.ir/v2/market/stats"
         src_dst = symbol.lower().replace("irt", "-irt").replace("usdt", "-usdt")
@@ -75,8 +74,49 @@ def fetch_nobitex_price(symbol):
             if price:
                 return float(price)
     except Exception as e:
-        print(f"[{get_iran_time()}] Stats fallback error for {symbol}: {repr(e)}")
+        print(f"[{get_iran_time()}] Nobitex fallback error for {symbol}: {repr(e)}")
 
+    return None
+
+def fetch_milli_price():
+    """دریافت قیمت یک گرم طلای ۱۸ عیار از میلی (Milli)"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*"
+    }
+    try:
+        # فراخوانی ای‌پای عمومی میلی
+        url = "https://milli.gold/api/v1/price/latest"
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            # استخراج قیمت هر گرم یا هر میلی‌گرم
+            price = data.get("price") or data.get("buyPrice") or data.get("data", {}).get("price")
+            if price:
+                price = float(price)
+                # در صورت ریال بودن به تومان تبدیل می‌شود
+                return int(price / 10) if price > 10000000 else int(price)
+    except Exception as e:
+        print(f"[{get_iran_time()}] Milli gold fetch error: {repr(e)}")
+    return None
+
+def fetch_melligold_price():
+    """دریافت قیمت یک گرم طلای ۱۸ عیار از ملی‌گلد (Melli Gold)"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*"
+    }
+    try:
+        url = "https://melligold.com/api/v1/gold-price"
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            price = data.get("price") or data.get("buy_price") or data.get("data", {}).get("price")
+            if price:
+                price = float(price)
+                return int(price / 10) if price > 10000000 else int(price)
+    except Exception as e:
+        print(f"[{get_iran_time()}] Melli Gold fetch error: {repr(e)}")
     return None
 
 def get_arrow(new_val, old_val):
@@ -104,76 +144,95 @@ def send_message(text):
         print(f"[{get_iran_time()}] استثنا در ارسال به تلگرام: {repr(e)}")
 
 def bot_loop():
-    global last_usdt_irt, last_btc_usdt, last_xaut_irt, last_gold_18k
+    global last_usdt_irt, last_btc_usdt
+    global last_xaut_irt, last_gold_18k, last_milli_price, last_melligold_price
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
-    send_message(f"🤖 <b>ربات قیمت تتر، طلا و بیت‌کوین فعال شد!</b>\n⏰ ساعت ثبت: {current_time}")
+    send_message(f"🤖 <b>ربات قیمت ارز و طلا فعال شد!</b>\n⏰ ساعت ثبت: {current_time}")
 
     while True:
         try:
-            # دریافت قیمت‌ها از نوبیتکس
-            usdt_irt = fetch_nobitex_price("USDTIRT")
-            btc_usdt = fetch_nobitex_price("BTCUSDT")
-            xaut_irt = fetch_nobitex_price("XAUTIRT")
-
             now_str = get_iran_time()
 
-            # اگر هر کدام از قیمت‌ها دریافت نشد، ۵ ثانیه صبر کن
-            if usdt_irt is None or btc_usdt is None or xaut_irt is None:
-                print(f"[{now_str}] دریافت کامل انجام نشد (USDT: {usdt_irt} | BTC: {btc_usdt} | XAUT: {xaut_irt})، ۵ ثانیه صبر...")
-                time.sleep(5)
-                continue
+            # 1. دریافت قیمت‌های ارز و کریپتو
+            usdt_irt = fetch_nobitex_price("USDTIRT")
+            btc_usdt = fetch_nobitex_price("BTCUSDT")
 
-            # تبدیل قیمت تتر و طلا از ریال به تومان (در صورت نیاز)
-            usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
-            xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-            btc_usdt = round(btc_usdt, 2)
+            # 2. دریافت قیمت‌های طلا
+            xaut_irt = fetch_nobitex_price("XAUTIRT")
+            milli_price = fetch_milli_price()
+            melligold_price = fetch_melligold_price()
 
-            # فرمول تبدیل هر انس تترگلد به یک گرم طلای ۱۸ عیار
-            # ۱ انس = ۳۱.۱۰۳۴۷۶۸ گرم | عیار ۱۸ = ۱۸/۲۴ (یا ۰.۷۵)
-            gold_18k = int((xaut_irt / 31.1034768) * (18 / 24))
+            # پردازش تتر و بیت کوین
+            if usdt_irt is not None and btc_usdt is not None:
+                usdt_irt = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+                btc_usdt = round(btc_usdt, 2)
 
-            # مقداردهی اولیه قیمت‌ها در اولین اجرا
-            if last_usdt_irt is None or last_btc_usdt is None or last_xaut_irt is None or last_gold_18k is None:
-                last_usdt_irt = usdt_irt
-                last_btc_usdt = btc_usdt
-                last_xaut_irt = xaut_irt
-                last_gold_18k = gold_18k
-                print(f"[{now_str}] قیمت‌های اولیه ثبت شدند | USDT: {usdt_irt:,} | XAUT: {xaut_irt:,} | 18K: {gold_18k:,} | BTC: ${btc_usdt:,.2f}")
-                time.sleep(4)
-                continue
+                # اولین مقداردهی یا تغییر در دلار/بیت‌کوین
+                if last_usdt_irt is None or last_btc_usdt is None:
+                    last_usdt_irt = usdt_irt
+                    last_btc_usdt = btc_usdt
+                elif (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt):
+                    usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
+                    btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
 
-            # چک کردن تغییر در هر یک از قیمت‌ها (حتی ۱ تومان تغییر در گرم طلا باعث آپدیت می‌شود)
-            if (usdt_irt != last_usdt_irt) or (btc_usdt != last_btc_usdt) or (xaut_irt != last_xaut_irt) or (gold_18k != last_gold_18k):
-                usdt_arrow = get_arrow(usdt_irt, last_usdt_irt)
-                btc_arrow = get_arrow(btc_usdt, last_btc_usdt)
-                xaut_arrow = get_arrow(xaut_irt, last_xaut_irt)
-                gold_18k_arrow = get_arrow(gold_18k, last_gold_18k)
+                    crypto_msg = (
+                        f"⏰ <b>{now_str}</b> | 💱 <b>بازار ارز و دیجیتال</b>\n\n"
+                        f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
+                        f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
+                    )
+                    print(f"[{now_str}] قیمت ارز/بیت‌کوین تغییر کرد! ارسال به کانال...")
+                    send_message(crypto_msg)
 
-                message = (
-                    f"⏰ <b>{now_str}</b>\n\n"
-                    f"💵 <b>تتر:</b> {usdt_irt:,} تومان {usdt_arrow}\n"
-                    f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
-                    f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
-                    f"🪙 <b>بیت‌کوین:</b> ${btc_usdt:,.2f} {btc_arrow}"
-                )
-                
-                print(f"[{now_str}] قیمت تغییر کرد! ارسال به کانال...")
-                send_message(message)
+                    last_usdt_irt = usdt_irt
+                    last_btc_usdt = btc_usdt
 
-                # به‌روزرسانی مقادیر قبلی
-                last_usdt_irt = usdt_irt
-                last_btc_usdt = btc_usdt
-                last_xaut_irt = xaut_irt
-                last_gold_18k = gold_18k
-            else:
-                print(f"[{now_str}] بدون تغییر | USDT: {usdt_irt:,} | 18K: {gold_18k:,} | BTC: ${btc_usdt:,.2f}")
+            # پردازش طلا
+            if xaut_irt is not None:
+                xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
+                # فرمول تبدیل هر انس تترگلد به یک گرم طلای ۱۸ عیار
+                gold_18k = int((xaut_irt / 31.1034768) * (18 / 24))
+
+                # اولین مقداردهی طلا
+                if last_xaut_irt is None or last_gold_18k is None:
+                    last_xaut_irt = xaut_irt
+                    last_gold_18k = gold_18k
+                    last_milli_price = milli_price
+                    last_melligold_price = melligold_price
+                elif (xaut_irt != last_xaut_irt) or (gold_18k != last_gold_18k) or \
+                     (milli_price != last_milli_price and milli_price is not None) or \
+                     (melligold_price != last_melligold_price and melligold_price is not None):
+
+                    xaut_arrow = get_arrow(xaut_irt, last_xaut_irt)
+                    gold_18k_arrow = get_arrow(gold_18k, last_gold_18k)
+                    milli_arrow = get_arrow(milli_price, last_milli_price) if milli_price else "⚪️ ➖"
+                    melligold_arrow = get_arrow(melligold_price, last_melligold_price) if melligold_price else "⚪️ ➖"
+
+                    milli_str = f"{milli_price:,} تومان" if milli_price else "در حال دریافت..."
+                    melligold_str = f"{melligold_price:,} تومان" if melligold_price else "در حال دریافت..."
+
+                    gold_msg = (
+                        f"⏰ <b>{now_str}</b> | 🏆 <b>بازار طلا</b>\n\n"
+                        f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
+                        f"🔱 <b>هر گرم تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}\n"
+                        f"🟡 <b>طلای ۱۸ عیار (میلی):</b> {milli_str} {milli_arrow}\n"
+                        f"✨ <b>طلای ۱۸ عیار (ملی‌گلد):</b> {melligold_str} {melligold_arrow}"
+                    )
+                    print(f"[{now_str}] قیمت طلا تغییر کرد! ارسال به کانال...")
+                    send_message(gold_msg)
+
+                    last_xaut_irt = xaut_irt
+                    last_gold_18k = gold_18k
+                    if milli_price: last_milli_price = milli_price
+                    if melligold_price: last_melligold_price = melligold_price
+
+            print(f"[{now_str}] بررسی انجام شد.")
 
         except Exception as e:
             print(f"خطای غیرمنتظره در حلقه اصلی: {repr(e)}")
 
-        time.sleep(4)
+        time.sleep(5)
 
 # ---- 3. اجرا ----
 if __name__ == "__main__":
