@@ -156,21 +156,29 @@ def get_quickchart_url(labels, data, title, color="rgb(247, 147, 26)"):
 
 # ---- 3. پردازش ارسال چارت‌های تصویری ساعتی ----
 def hourly_chart_loop():
-    """تست اولیه ارسال چارت ۲۰ ثانیه بعد از روشن شدن و سپس هر ۱ ساعت"""
+    """ارسال چارت‌های بیت‌کوین و انس طلا ۲۰ ثانیه بعد از روشن شدن و سپس هر ۱ ساعت"""
     time.sleep(20)
     
     while True:
         try:
             now_str = get_iran_time()
-            # اگر داده‌ای جمع شده باشد یا حداقل قیمت لحظه‌ای باشد
             times = time_history if len(time_history) > 1 else [now_str[:5], now_str[:5]]
-            prices = btc_history if len(btc_history) > 1 else ([last_btc_usdt, last_btc_usdt] if last_btc_usdt else [65000, 65000])
             
-            chart_url = get_quickchart_url(times, prices, "Bitcoin (BTC/USDT) Price Chart", "rgb(247, 147, 26)")
-            send_photo_url(chart_url, f"📊 <b>چارت تغییرات قیمت بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
-            print(f"[{now_str}] چارت تصویری ارسال شد.")
+            # ۱. چارت بیت‌کوین (رنگ نارنجی)
+            btc_prices = btc_history if len(btc_history) > 1 else ([last_btc_usdt, last_btc_usdt] if last_btc_usdt else [65000, 65000])
+            btc_chart_url = get_quickchart_url(times, btc_prices, "Bitcoin (BTC/USDT) Price Chart", "rgb(247, 147, 26)")
+            send_photo_url(btc_chart_url, f"📊 <b>چارت تغییرات قیمت بیت‌کوین</b>\n⏰ <b>{now_str}</b>")
+            
+            time.sleep(3) # فاصله کوتاه بین ارسال دو عکس
+
+            # ۲. چارت انس جهانی طلا (رنگ طلایی)
+            gold_prices = gold_history if len(gold_history) > 1 else ([last_xau_usd, last_xau_usd] if last_xau_usd else [2300, 2300])
+            gold_chart_url = get_quickchart_url(times, gold_prices, "Gold (XAU/USD) Price Chart", "rgb(255, 215, 0)")
+            send_photo_url(gold_chart_url, f"📊 <b>چارت تغییرات انس جهانی طلا</b>\n⏰ <b>{now_str}</b>")
+
+            print(f"[{now_str}] هر دو چارت تصویری (بیت‌کوین و طلا) ارسال شدند.")
         except Exception as e:
-            print(f"خطا در ارسال چارت: {repr(e)}")
+            print(f"خطا در ارسال چارت‌ها: {repr(e)}")
             
         time.sleep(3600)
 
