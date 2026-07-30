@@ -146,7 +146,7 @@ def bot_loop():
                     last_usdt_irt = usdt_irt_val
                     last_btc_usdt = btc_usdt_val
 
-            # --- پیام دوم: بازار طلا (۴ قیمت اصلی) ---
+            # --- پیام دوم: بازار طلا ---
             if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
                 xau_usd_val = round(xau_usd, 2)
                 xaut_irt_val = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
@@ -183,9 +183,9 @@ def bot_loop():
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
 
-                # --- پیام سوم: محاسبه اختلاف/حباب انس در پیام جداگانه ---
-                calculated_ounce_irt = int(xau_usd_val * usdt_toman)
-                diff_val = xaut_irt_val - calculated_ounce_irt
+                # --- پیام سوم: مقایسه ساده و روان انس نوبیتکس با انس جهانی ---
+                calculated_global_ounce_toman = int(xau_usd_val * usdt_toman)
+                diff_val = xaut_irt_val - calculated_global_ounce_toman
 
                 if last_diff_val is None:
                     last_diff_val = diff_val
@@ -193,15 +193,15 @@ def bot_loop():
                     diff_arrow = get_arrow(diff_val, last_diff_val)
                     
                     if diff_val == 0:
-                        diff_str = "0"
+                        diff_text = "انس نوبیتکس و انس جهانی کاملاً برابر هستند (۰)"
                     elif diff_val > 0:
-                        diff_str = f"+{diff_val:,}"
+                        diff_text = f"انس نوبیتکس {diff_val:,} تومان گران‌تر است"
                     else:
-                        diff_str = f"-{abs(diff_val):,}"
+                        diff_text = f"انس نوبیتکس {abs(diff_val):,} تومان ارزان‌تر است"
 
                     diff_msg = (
                         f"⏰ <b>{now_str}</b>\n"
-                        f"📊 <b>اختلاف انس تومانی نوبیتکس با انس دلاری:</b> {diff_str} تومان {diff_arrow}"
+                        f"⚖️ <b>{diff_text}</b> {diff_arrow}"
                     )
                     send_message(diff_msg)
                     last_diff_val = diff_val
