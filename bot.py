@@ -24,7 +24,7 @@ CHAT_ID = -1003721340249
 last_usdt_irt = None
 last_btc_usdt = None
 
-last_xaut_irt = None
+last_xau_usd = None
 last_gold_18k = None
 
 def get_iran_time():
@@ -61,19 +61,37 @@ def fetch_nobitex_price(symbol):
     except Exception as e:
         print(f"[{get_iran_time()}] Nobitex error for {symbol}: {repr(e)}")
 
-    try:
-        url = "https://api.nobitex.ir/v2/market/stats"
-        src_dst = symbol.lower().replace("irt", "-irt").replace("usdt", "-usdt")
-        r = requests.post(url, json={"src": src_dst.split("-")[0], "dst": src_dst.split("-")[1]}, headers=headers, timeout=10)
-        if r.status_code == 200:
-            stats = r.json().get("stats", {})
-            key = f"{src_dst.split('-')[0]}-{src_dst.split('-')[1]}"
-            price = stats.get(key, {}).get("latest")
-            if price:
-                return float(price)
-    except Exception as e:
-        print(f"[{get_iran_time()}] Nobitex fallback error for {symbol}: {repr(e)}")
+    return None
 
+def fetch_tradingview_xauusd():
+    """دریافت قیمت انس جهانی طلا (XAUUSD) از TradingView"""
+    url = "https://scanner.tradingview.com/forex/scan"
+    payload = {
+        "symbols": {"tickers": ["FOREXCOM:XAUUSD"]},
+        "columns": ["close"]
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            price = data["data"][0]["d"][0]
+            return float(price)
+    except Exception as e:
+        print(f"[{get_iran_time()}] TradingView XAUUSD error: {repr(e)}")
+        
+    # روش جایگزین (Fallback) برای انس جهانی
+    try:
+        r2 = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/GC=F", headers=headers, timeout=10)
+        if r2.status_code == 200:
+            price = r2.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
+            return float(price)
+    except Exception as e:
+        print(f"[{get_iran_time()}] Yahoo Finance Fallback error: {repr(e)}")
+        
     return None
 
 def get_arrow(new_val, old_val):
@@ -102,7 +120,7 @@ def send_message(text):
 
 def bot_loop():
     global last_usdt_irt, last_btc_usdt
-    global last_xaut_irt, last_gold_18k
+    global last_xau_usd, last_gold_18k
     
     current_time = get_iran_time()
     print(f"ربات شروع شد | ساعت ایران: {current_time}")
@@ -116,8 +134,8 @@ def bot_loop():
             usdt_irt = fetch_nobitex_price("USDTIRT")
             btc_usdt = fetch_nobitex_price("BTCUSDT")
 
-            # 2. دریافت قیمت طلا (انس تترگلد)
-            xaut_irt = fetch_nobitex_price("XAUTIRT")
+            # 2. دریافت انس طلا از تریدینگ‌ویو
+            xau_usd = fetch_tradingview_xauusd()
 
             # پردازش تتر و بیت‌کوین
             if usdt_irt is not None and btc_usdt is not None:
@@ -142,28 +160,30 @@ def bot_loop():
                     last_usdt_irt = usdt_irt
                     last_btc_usdt = btc_usdt
 
-            # پردازش طلا (انس تترگلد و گرم ۱۸ عیار)
-            if xaut_irt is not None:
-                xaut_irt = int(xaut_irt / 10) if xaut_irt > 1000000 else int(xaut_irt)
-                gold_18k = int((xaut_irt / 31.1034768) * (18.0 / 24.0))
+            # پردازش انس جهانی و محاسبه ۱۸ عیار
+            if xau_usd is not None and usdt_irt is not None:
+                xau_usd = round(xau_usd, 2)
+                
+                # فرمول: (قیمت انس جهانی * قیمت دلار/تتر) / 31.1034768 * (18 / 24)
+                gold_18k_calculated = int(((xau_usd * usdt_irt) / 31.1034768) * (18.0 / 24.0))
 
-                if last_xaut_irt is None or last_gold_18k is None:
-                    last_xaut_irt = xaut_irt
-                    last_gold_18k = gold_18k
-                elif (xaut_irt != last_xaut_irt) or (gold_18k != last_gold_18k):
-                    xaut_arrow = get_arrow(xaut_irt, last_xaut_irt)
-                    gold_18k_arrow = get_arrow(gold_18k, last_gold_18k)
+                if last_xau_usd is None or last_gold_18k is None:
+                    last_xau_usd = xau_usd
+                    last_gold_18k = gold_18k_calculated
+                elif (xau_usd != last_xau_usd) or (gold_18k_calculated != last_gold_18k):
+                    xau_arrow = get_arrow(xau_usd, last_xau_usd)
+                    gold_18k_arrow = get_arrow(gold_18k_calculated, last_gold_18k)
 
                     gold_msg = (
                         f"⏰ <b>{now_str}</b>\n"
-                        f"🥇 <b>تتر گلد (انس):</b> {xaut_irt:,} تومان {xaut_arrow}\n"
-                        f"🔱 <b>تترگلد (۱۸ عیار):</b> {gold_18k:,} تومان {gold_18k_arrow}"
+                        f"🥇 <b>انس جهانی:</b> ${xau_usd:,.2f} {xau_arrow}\n"
+                        f"🔱 <b>طلای ۱۸ عیار:</b> {gold_18k_calculated:,} تومان {gold_18k_arrow}"
                     )
-                    print(f"[{now_str}] قیمت طلا تغییر کرد! ارسال به کانال...")
+                    print(f"[{now_str}] قیمت انس طلا/۱۸عیار تغییر کرد! ارسال به کانال...")
                     send_message(gold_msg)
 
-                    last_xaut_irt = xaut_irt
-                    last_gold_18k = gold_18k
+                    last_xau_usd = xau_usd
+                    last_gold_18k = gold_18k_calculated
 
             print(f"[{now_str}] بررسی انجام شد.")
 
