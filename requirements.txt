@@ -3,3 +3,4 @@ urllib3
 python-dateutil
 flask
 pytz
+cloudscraper
