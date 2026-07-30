@@ -112,42 +112,11 @@ def bot_loop():
     while True:
         try:
             # -------------------------------------------------------------
-            # گام ۱: (ثانیه ۰) بررسی و ارسال پیام تتر و بیت‌کوین
-            # -------------------------------------------------------------
-            now_str_crypto = get_iran_time()
-            usdt_irt = fetch_nobitex_price("USDTIRT")
-            btc_usdt = fetch_nobitex_price("BTCUSDT")
-
-            if usdt_irt is not None and btc_usdt is not None:
-                usdt_irt_val = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
-                btc_usdt_val = round(btc_usdt, 2)
-
-                if last_usdt_irt is None or last_btc_usdt is None:
-                    last_usdt_irt = usdt_irt_val
-                    last_btc_usdt = btc_usdt_val
-                elif (usdt_irt_val != last_usdt_irt) or (btc_usdt_val != last_btc_usdt):
-                    usdt_arrow = get_arrow(usdt_irt_val, last_usdt_irt)
-                    btc_arrow = get_arrow(btc_usdt_val, last_btc_usdt)
-
-                    crypto_msg = (
-                        f"⏰ <b>{now_str_crypto}</b>\n"
-                        f"💵 <b>تتر:</b> {usdt_irt_val:,} تومان {usdt_arrow}\n"
-                        f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {btc_arrow}"
-                    )
-                    send_message(crypto_msg)
-                    last_usdt_irt = usdt_irt_val
-                    last_btc_usdt = btc_usdt_val
-
-            # -------------------------------------------------------------
-            # توقف دقیقا به مدت ۵ ثانیه قبل از بررسی بازار طلا
-            # -------------------------------------------------------------
-            time.sleep(5)
-
-            # -------------------------------------------------------------
-            # گام ۲: (ثانیه ۵) بررسی و ارسال پیام انس و طلا
+            # گام ۱: (ثانیه ۰) ابتدا بررسی و ارسال پیام انس و طلا
             # -------------------------------------------------------------
             xau_usd = fetch_tradingview_gold()
             xaut_irt = fetch_nobitex_price("XAUTIRT")
+            usdt_irt = fetch_nobitex_price("USDTIRT")
 
             if xau_usd is not None and xaut_irt is not None and usdt_irt is not None:
                 now_str_gold = get_iran_time()
@@ -182,6 +151,37 @@ def bot_loop():
                     last_xau_usd = xau_usd_val
                     last_gold_18k_nobitex = gold_18k_nobitex
                     last_gold_18k_global = gold_18k_global
+
+            # -------------------------------------------------------------
+            # توقف دقیقا به مدت ۵ ثانیه قبل از بررسی بازار ارز و دیجیتال
+            # -------------------------------------------------------------
+            time.sleep(5)
+
+            # -------------------------------------------------------------
+            # گام ۲: (ثانیه ۵) بررسی و ارسال پیام تتر و بیت‌کوین
+            # -------------------------------------------------------------
+            btc_usdt = fetch_nobitex_price("BTCUSDT")
+
+            if usdt_irt is not None and btc_usdt is not None:
+                now_str_crypto = get_iran_time()
+                usdt_irt_val = int(usdt_irt / 10) if usdt_irt > 100000 else int(usdt_irt)
+                btc_usdt_val = round(btc_usdt, 2)
+
+                if last_usdt_irt is None or last_btc_usdt is None:
+                    last_usdt_irt = usdt_irt_val
+                    last_btc_usdt = btc_usdt_val
+                elif (usdt_irt_val != last_usdt_irt) or (btc_usdt_val != last_btc_usdt):
+                    usdt_arrow = get_arrow(usdt_irt_val, last_usdt_irt)
+                    btc_arrow = get_arrow(btc_usdt_val, last_btc_usdt)
+
+                    crypto_msg = (
+                        f"⏰ <b>{now_str_crypto}</b>\n"
+                        f"💵 <b>تتر:</b> {usdt_irt_val:,} تومان {usdt_arrow}\n"
+                        f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {btc_arrow}"
+                    )
+                    send_message(crypto_msg)
+                    last_usdt_irt = usdt_irt_val
+                    last_btc_usdt = btc_usdt_val
 
             print(f"[{get_iran_time()}] چرخه ۱۰ ثانیه‌ای کامل شد.")
 
