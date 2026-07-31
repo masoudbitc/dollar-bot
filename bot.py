@@ -62,6 +62,17 @@ def get_iran_time_date():
     date_str = j_now.strftime("%Y/%m/%d")
     return f"{time_str} - {date_str}"
 
+def fetch_nerkh_data():
+    try:
+        url = "https://nerkh.io/api/v1/prices"  # یا آدرس دقیق اندپوینت API سایت nerkh.io در صورت نیاز
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print(f"[{get_iran_time_date()}] Nerkh error: {repr(e)}")
+    return None
+
 def fetch_exir_usdt_price():
     try:
         url = "https://api.exir.io/v1/ticker?symbol=usdt-irt"
@@ -425,6 +436,7 @@ def bot_loop():
             _, _, usdt_last_trade = fetch_nobitex_orderbook("USDTIRT")
             exir_usdt_price = fetch_exir_usdt_price()
             btc_usdt_val_raw = fetch_btc_price_usdt()
+            nerkh_data = fetch_nerkh_data()
 
             usdt_mid = usdt_real_val if usdt_real_val else usdt_last_trade
 
@@ -443,8 +455,16 @@ def bot_loop():
                         f"🥇 <b>انس طلا:</b> ${xau_usd_val:,.2f} {get_arrow(xau_usd_val, last_xau_usd)}\n"
                         f"🔱 <b>طلا/تومان ۱۸ عیار:</b> {gold_18k_nobitex:,} تومان {get_arrow(gold_18k_nobitex, last_gold_18k_nobitex)}\n"
                         f"🌐 <b>طلا/تتر ۱۸ عیار:</b> {gold_18k_global:,} تومان {get_arrow(gold_18k_global, last_gold_18k_global)}\n"
-                        f"⏰ {now_str}"
                     )
+                    
+                    # افزودن اطلاعات از nerkh.io در صورت موجود بودن
+                    if nerkh_data and isinstance(nerkh_data, dict):
+                        # فرض بر این است کهکلیدهای سایت nerkh.io به این صورت باشند (قابل تنظیم بر اساس خروجی واقعی API)
+                        sepehar_coin = nerkh_data.get("sekee_emami", "---")
+                        gold_18k_site = nerkh_data.get("gold_18k", "---")
+                        gold_msg += f"🟡 <b>سکه امامی (نرخ):</b> {sepehar_coin}\n"
+                    
+                    gold_msg += f"⏰ {now_str}"
                     send_message(gold_msg)
 
                     last_xau_usd = xau_usd_val
