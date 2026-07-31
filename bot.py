@@ -8,7 +8,7 @@ import jdatetime
 from flask import Flask
 from datetime import datetime, timezone, timedelta
 
-# ---- 1. وب‌سرور برای Render و UptimeRobot ----
+# ---- ۱. وب‌سرور برای Render و UptimeRobot ----
 app = Flask(__name__)
 
 @app.route('/')
@@ -19,7 +19,7 @@ def run_flask():
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# ---- 2. تنظیمات ربات و زمان ایران ----
+# ---- ۲. تنظیمات ربات و زمان ایران ----
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
@@ -80,11 +80,9 @@ def fetch_nobitex_orderbook(symbol):
 
 # --- API های جایگزین برای بیت کوین و انس ---
 def fetch_btc_price():
-    # اول نوبیتکس
     _, _, btc_last = fetch_nobitex_orderbook("BTCUSDT")
     if btc_last and btc_last > 1000:
         return btc_last
-    # جایگزین اول: CoinGecko
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
         r = requests.get(url, timeout=5)
@@ -94,7 +92,6 @@ def fetch_btc_price():
                 return val
     except Exception:
         pass
-    # جایگزین دوم: Binance API
     try:
         url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
         r = requests.get(url, timeout=5)
@@ -107,7 +104,6 @@ def fetch_btc_price():
     return None
 
 def fetch_gold_price():
-    # جایگزین اول: TradingView
     url = "https://scanner.tradingview.com/global/scan"
     payload = {"symbols": {"tickers": ["TVC:GOLD"]}, "columns": ["close"]}
     headers = {"User-Agent": "Mozilla/5.0", "Origin": "https://www.tradingview.com", "Referer": "https://www.tradingview.com/"}
@@ -122,7 +118,6 @@ def fetch_gold_price():
     except Exception:
         pass
 
-    # جایگزین دوم: Metals API عمومی یا فید آزاد
     try:
         url = "https://data-asg.goldprice.org/dbXRates/USD"
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -146,6 +141,7 @@ def get_arrow(new_val, old_val):
 
 def send_message(text):
     if not TOKEN:
+        print("خطا: BOT_TOKEN تنظیم نشده است!")
         return
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -246,12 +242,11 @@ def publish_dual_gold_chart(timeframe_str, toman_data, global_data, times_list):
     caption = f"📊 <b>{title}</b>\n⏰ {now_str}"
     send_photo_url(chart_url, caption)
 
-# ---- ۳. حلقه‌های زمان‌بندی چارت‌ها (دقیقاً مضربی از ۱۰ دقیقه) ----
+# ---- ۳. حلقه‌های زمان‌بندی چارت‌ها (مضربی از ۱۰ دقیقه) ----
 def chart_10m_loop():
     while True:
         try:
             now = get_iran_datetime()
-            # محاسبه ثانیه‌ها تا دقیقه‌ی رند بعدی که بر ۱۰ بخش‌پذیر است (0, 10, 20, 30, 40, 50)
             current_minute = now.minute
             next_ten_minute = ((current_minute // 10) + 1) * 10
             
@@ -265,7 +260,6 @@ def chart_10m_loop():
                 time.sleep(sleep_secs)
 
             now_chk = get_iran_datetime()
-            # اگر ساعت رند ساعتی یا ۲۱:۰۰ بود، این چرخه ۱۰ دقیقه‌ای اجرا نشود تا با چارت‌های ۱ ساعته و روزانه تداخل نکند
             if now_chk.minute == 0 or (now_chk.hour == 21 and now_chk.minute == 0):
                 time.sleep(10)
                 continue
@@ -375,7 +369,7 @@ def daily_and_periodic_charts_loop():
             print(f"خطا در چارت‌های دوره‌ای: {repr(e)}")
             time.sleep(60)
 
-# ---- ۴. حلقه قیمت‌های لحظه‌ای (با فیلتر مقادیر صفر و پرت) ----
+# ---- ۴. حلقه قیمت‌های لحظه‌ای (بدون محدودیت و شرط‌های سخت‌گیرانه) ----
 def bot_loop():
     global last_usdt_bid, last_btc_usdt, last_xau_usd
     global last_gold_18k_nobitex, last_gold_18k_global
@@ -395,7 +389,7 @@ def bot_loop():
 
             usdt_mid = usdt_bid if usdt_bid else usdt_last
 
-            # --- بخش طلا با فیلتر خطای صفر و عدد پرت ---
+            # --- بخش طلا ---
             if xau_usd and xau_usd > 500 and usdt_mid and usdt_mid > 10000:
                 xau_usd_val = round(xau_usd, 2)
                 usdt_toman = int(usdt_mid / 10)
@@ -405,8 +399,7 @@ def bot_loop():
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0)) if xaut_irt_val > 100000 else 0
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0))
 
-                # جلوگیری از ثبت مقدار صفر یا عدد پرت غیرمتعارف
-                if gold_18k_global > 1000000 and (last_xau_usd is None or xau_usd_val != last_xau_usd or gold_18k_nobitex != last_gold_18k_nobitex):
+                if gold_18k_global > 1000000:
                     gold_msg = (
                         f"🥇 <b>انس طلا:</b> ${xau_usd_val:,.2f} {get_arrow(xau_usd_val, last_xau_usd)}\n"
                         f"🔱 <b>طلا/تومان ۱۸ عیار:</b> {gold_18k_nobitex:,} تومان {get_arrow(gold_18k_nobitex, last_gold_18k_nobitex)}\n"
@@ -422,22 +415,20 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر و کریپتو ---
-            if usdt_bid is not None or btc_last is not None:
-                usdt_bid_val = int(usdt_bid / 10) if (usdt_bid and usdt_bid > 100000) else (last_usdt_bid or 60000)
-                btc_usdt_val = round(btc_last, 2) if btc_last else (last_btc_usdt or 60000.0)
+            # --- بخش تتر و کریپتو (بدون شرط مقایسه قیمت قدیم و جدید) ---
+            usdt_bid_val = int(usdt_bid / 10) if (usdt_bid and usdt_bid > 100000) else (int(usdt_last / 10) if (usdt_last and usdt_last > 100000) else (last_usdt_bid or 60000))
+            btc_usdt_val = round(btc_last, 2) if btc_last else (last_btc_usdt or 60000.0)
 
-                if usdt_bid_val > 10000 and btc_usdt_val > 1000:
-                    last_btc_usdt = btc_usdt_val
-                    last_usdt_bid = usdt_bid_val
+            if usdt_bid_val > 10000 and btc_usdt_val > 1000:
+                crypto_msg = (
+                    f"💵 <b>تتر:</b> {usdt_bid_val:,} تومان {get_arrow(usdt_bid_val, last_usdt_bid)}\n"
+                    f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {get_arrow(btc_usdt_val, last_btc_usdt)}\n"
+                    f"⏰ {now_str}"
+                )
+                send_message(crypto_msg)
 
-                    if last_usdt_bid is None or (usdt_bid_val != last_usdt_bid) or (btc_usdt_val != last_btc_usdt):
-                        crypto_msg = (
-                            f"💵 <b>تتر:</b> {usdt_bid_val:,} تومان {get_arrow(usdt_bid_val, last_usdt_bid)}\n"
-                            f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {get_arrow(btc_usdt_val, last_btc_usdt)}\n"
-                            f"⏰ {now_str}"
-                        )
-                        send_message(crypto_msg)
+                last_btc_usdt = btc_usdt_val
+                last_usdt_bid = usdt_bid_val
 
             time.sleep(10)
 
