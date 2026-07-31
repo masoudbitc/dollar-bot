@@ -461,9 +461,9 @@ def bot_loop():
 
             if usdt_bid_val > 10000 and btc_usdt_val > 1000:
                 crypto_msg = (
-                    f"💵 <b>تتر:</b> {usdt_bid_val:,} تومان {get_arrow(usdt_bid_val, last_usdt_bid)}\n"
+                    f"💵 <b>تتر/نوبیتکس:</b> {usdt_bid_val:,} تومان {get_arrow(usdt_bid_val, last_usdt_bid)}\n"
                     f"💵 <b>تتر/اکسیر:</b> {exir_usdt_toman:,} تومان {get_arrow(exir_usdt_toman, last_exir_usdt)}\n"
-                    f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {get_arrow(btc_usdt_val, last_btc_usdt)}\n"
+                    f"🪙 <b>بیت‌کوین/تریدینگ ویو:</b> ${btc_usdt_val:,.2f} {get_arrow(btc_usdt_val, last_btc_usdt)}\n"
                     f"⏰ {now_str}"
                 )
                 send_message(crypto_msg)
