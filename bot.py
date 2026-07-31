@@ -23,24 +23,28 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# تاریخچه‌ها (شامل انس طلا)
+# تاریخچه‌ها (حفظ کامل تاریخچه‌های قبلی)
 btc_history_10m = []
 gold_toman_10m = []
 gold_global_10m = []
+usdt_history_10m = []
 xau_history_10m = []
 time_history_10m = []
 
 btc_history_1h = []
 gold_toman_1h = []
 gold_global_1h = []
+usdt_history_1h = []
 xau_history_1h = []
 time_history_1h = []
 
 btc_history_daily = []
 gold_toman_daily = []
 gold_global_daily = []
+usdt_history_daily = []
 xau_history_daily = []
 
+last_usdt_bid = None
 last_exir_usdt = None
 last_btc_usdt = None
 last_xau_usd = None
@@ -91,6 +95,24 @@ def fetch_nobitex_orderbook(symbol):
         print(f"[{get_iran_time_date()}] Nobitex error ({symbol}): {repr(e)}")
     return None, None, None
 
+def fetch_usdt_real_price():
+    _, _, last_trade = fetch_nobitex_orderbook("USDTIRT")
+    if last_trade and last_trade > 100000:
+        return float(last_trade)
+    
+    try:
+        url = "https://api.nobitex.ir/market/stats"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            stats = r.json().get("stats", {})
+            usdt_stat = stats.get("usdt-irt", {})
+            val = float(usdt_stat.get("latest", 0))
+            if val > 100000:
+                return val
+    except Exception:
+        pass
+    return None
+
 def fetch_btc_price_usdt():
     try:
         url = "https://scanner.tradingview.com/crypto/scan"
@@ -133,18 +155,6 @@ def fetch_gold_price():
     except Exception:
         pass
     return 2650.0
-
-def fetch_nerkh_market_data():
-    # دریافت نرخ طلا و سکه از منابع آزاد/سایت‌های مرتبط (یا جایگزینی با API دلخواه شما)
-    try:
-        r = requests.get("https://api.tgju.org/v1/market/indicator/summary-table", timeout=5)
-        # نمونه بازگرداندن داده ساختاریافته یا پیش‌فرض در صورت قطع ارتباط
-        if r.status_code == 200:
-            # بسته به ساختار خروجی سایت مقصد قابل تنظیم است
-            pass
-    except Exception:
-        pass
-    return None
 
 def get_arrow(new_val, old_val):
     if old_val is None or new_val == old_val:
@@ -279,10 +289,11 @@ def chart_10m_loop():
                 time.sleep(10)
                 continue
 
-            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_xau_usd:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid and last_xau_usd:
                 btc_history_10m.append(last_btc_usdt)
                 gold_toman_10m.append(last_gold_18k_nobitex)
                 gold_global_10m.append(last_gold_18k_global)
+                usdt_history_10m.append(last_usdt_bid)
                 xau_history_10m.append(last_xau_usd)
                 time_history_10m.append(now_chk.strftime("%H:%M"))
                 
@@ -290,12 +301,15 @@ def chart_10m_loop():
                     btc_history_10m.pop(0)
                     gold_toman_10m.pop(0)
                     gold_global_10m.pop(0)
+                    usdt_history_10m.pop(0)
                     xau_history_10m.pop(0)
                     time_history_10m.pop(0)
 
                 publish_chart("بیتکوین", "10 دقیقه ای", btc_history_10m, time_history_10m, "rgb(247, 147, 26)")
                 time.sleep(3)
                 publish_dual_gold_chart("10 دقیقه ای", gold_toman_10m, gold_global_10m, time_history_10m)
+                time.sleep(3)
+                publish_chart("تتر", "10 دقیقه ای", usdt_history_10m, time_history_10m, "rgb(38, 166, 154)")
                 time.sleep(3)
                 publish_chart("انس طلا", "10 دقیقه ای", xau_history_10m, time_history_10m, "rgb(234, 179, 8)")
 
@@ -314,10 +328,11 @@ def chart_1h_loop():
             if now.hour == 21:
                 continue
 
-            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_xau_usd:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid and last_xau_usd:
                 btc_history_1h.append(last_btc_usdt)
                 gold_toman_1h.append(last_gold_18k_nobitex)
                 gold_global_1h.append(last_gold_18k_global)
+                usdt_history_1h.append(last_usdt_bid)
                 xau_history_1h.append(last_xau_usd)
                 time_history_1h.append(now.strftime("%H:%M"))
 
@@ -325,12 +340,15 @@ def chart_1h_loop():
                     btc_history_1h.pop(0)
                     gold_toman_1h.pop(0)
                     gold_global_1h.pop(0)
+                    usdt_history_1h.pop(0)
                     xau_history_1h.pop(0)
                     time_history_1h.pop(0)
 
                 publish_chart("بیتکوین", "1 ساعته", btc_history_1h, time_history_1h, "rgb(247, 147, 26)")
                 time.sleep(3)
                 publish_dual_gold_chart("1 ساعته", gold_toman_1h, gold_global_1h, time_history_1h)
+                time.sleep(3)
+                publish_chart("تتر", "1 ساعته", usdt_history_1h, time_history_1h, "rgb(38, 166, 154)")
                 time.sleep(3)
                 publish_chart("انس طلا", "1 ساعته", xau_history_1h, time_history_1h, "rgb(234, 179, 8)")
         except Exception as e:
@@ -349,16 +367,18 @@ def daily_and_periodic_charts_loop():
             now = get_iran_datetime()
             j_now = jdatetime.datetime.fromgregorian(datetime=now)
 
-            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_xau_usd:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid and last_xau_usd:
                 btc_history_daily.append(last_btc_usdt)
                 gold_toman_daily.append(last_gold_18k_nobitex)
                 gold_global_daily.append(last_gold_18k_global)
+                usdt_history_daily.append(last_usdt_bid)
                 xau_history_daily.append(last_xau_usd)
                 
                 if len(btc_history_daily) > 30:
                     btc_history_daily.pop(0)
                     gold_toman_daily.pop(0)
                     gold_global_daily.pop(0)
+                    usdt_history_daily.pop(0)
                     xau_history_daily.pop(0)
                 
                 dates_list = [jdatetime.datetime.fromgregorian(datetime=now).strftime("%m/%d")] * len(btc_history_daily)
@@ -367,6 +387,8 @@ def daily_and_periodic_charts_loop():
                     publish_chart("بیتکوین", timeframe_name, btc_history_daily, dates_list, "rgb(247, 147, 26)")
                     time.sleep(3)
                     publish_dual_gold_chart(timeframe_name, gold_toman_daily, gold_global_daily, dates_list)
+                    time.sleep(3)
+                    publish_chart("تتر", timeframe_name, usdt_history_daily, dates_list, "rgb(38, 166, 154)")
                     time.sleep(3)
                     publish_chart("انس طلا", timeframe_name, xau_history_daily, dates_list, "rgb(234, 179, 8)")
                     time.sleep(3)
@@ -386,7 +408,7 @@ def daily_and_periodic_charts_loop():
 
 # ---- ۴. حلقه قیمت‌های لحظه‌ای ----
 def bot_loop():
-    global last_exir_usdt, last_btc_usdt, last_xau_usd
+    global last_usdt_bid, last_exir_usdt, last_btc_usdt, last_xau_usd
     global last_gold_18k_nobitex, last_gold_18k_global
     
     current_time = get_iran_time_date()
@@ -399,22 +421,17 @@ def bot_loop():
             
             xau_usd = fetch_gold_price()
             xaut_bid, xaut_ask, xaut_last = fetch_nobitex_orderbook("XAUTIRT")
+            usdt_real_val = fetch_usdt_real_price()
+            _, _, usdt_last_trade = fetch_nobitex_orderbook("USDTIRT")
             exir_usdt_price = fetch_exir_usdt_price()
             btc_usdt_val_raw = fetch_btc_price_usdt()
 
-            # --- بخش طلا و سکه از منبع جدید (Nerkh / مرجع دلخواه) ---
-            # در این بخش می‌توانید متغیرهای دریافتی از منبع جدید را جایگزین کنید
-            # به عنوان نمونه خط مجزای طلا و سکه:
-            gold_market_msg = (
-                f"🪙 <b>بازار طلا و سکه (مرجع):</b> نرخ‌های به‌روز دریافت شد\n"
-                f"⏰ {now_str}"
-            )
-            # send_message(gold_market_msg) # در صورت نیاز به ارسال مجزا
+            usdt_mid = usdt_real_val if usdt_real_val else usdt_last_trade
 
-            # --- بخش طلا و انس ---
-            if xau_usd and xau_usd > 500 and exir_usdt_price and exir_usdt_price > 10000:
+            # --- بخش طلا ---
+            if xau_usd and xau_usd > 500 and usdt_mid and usdt_mid > 10000:
                 xau_usd_val = round(xau_usd, 2)
-                usdt_toman = int(exir_usdt_price / 10)
+                usdt_toman = int(usdt_mid / 10)
                 
                 xaut_irt_val = int(xaut_bid / 10) if (xaut_bid and xaut_bid > 1000000) else (int(xaut_last / 10) if xaut_last and xaut_last > 1000000 else 0)
 
@@ -437,12 +454,14 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر (اکسیر) و بیت‌کوین (بدون چارت تتر) ---
+            # --- بخش تتر (نوبیتکس با چارت) و تتر (اکسیر بدون چارت) و بیت‌کوین ---
+            usdt_bid_val = int(usdt_mid / 10) if (usdt_mid and usdt_mid > 10000) else (last_usdt_bid or 0)
             exir_usdt_toman = int(exir_usdt_price / 10) if (exir_usdt_price and exir_usdt_price > 10000) else (last_exir_usdt or 0)
             btc_usdt_val = round(btc_usdt_val_raw, 2) if (btc_usdt_val_raw and btc_usdt_val_raw > 1000) else (last_btc_usdt or 0)
 
-            if exir_usdt_toman > 1000 and btc_usdt_val > 1000:
+            if usdt_bid_val > 10000 and btc_usdt_val > 1000:
                 crypto_msg = (
+                    f"💵 <b>تتر:</b> {usdt_bid_val:,} تومان {get_arrow(usdt_bid_val, last_usdt_bid)}\n"
                     f"💵 <b>تتر/اکسیر:</b> {exir_usdt_toman:,} تومان {get_arrow(exir_usdt_toman, last_exir_usdt)}\n"
                     f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {get_arrow(btc_usdt_val, last_btc_usdt)}\n"
                     f"⏰ {now_str}"
@@ -450,6 +469,7 @@ def bot_loop():
                 send_message(crypto_msg)
 
                 last_btc_usdt = btc_usdt_val
+                last_usdt_bid = usdt_bid_val
                 last_exir_usdt = exir_usdt_toman
 
             time.sleep(10)
