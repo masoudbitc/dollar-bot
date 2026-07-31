@@ -78,31 +78,7 @@ def fetch_nobitex_orderbook(symbol):
         print(f"[{get_iran_time_date()}] Nobitex error ({symbol}): {repr(e)}")
     return None, None, None
 
-# --- API های جایگزین برای بیت کوین و انس ---
-def fetch_btc_price():
-    _, _, btc_last = fetch_nobitex_orderbook("BTCUSDT")
-    if btc_last and btc_last > 1000:
-        return btc_last
-    try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            val = float(r.json()["bitcoin"]["usd"])
-            if val > 1000:
-                return val
-    except Exception:
-        pass
-    try:
-        url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            val = float(r.json()["price"])
-            if val > 1000:
-                return val
-    except Exception:
-        pass
-    return None
-
+# --- دریافت قیمت انس طلا از TradingView با جایگزین عمومی ---
 def fetch_gold_price():
     url = "https://scanner.tradingview.com/global/scan"
     payload = {"symbols": {"tickers": ["TVC:GOLD"]}, "columns": ["close"]}
@@ -118,6 +94,7 @@ def fetch_gold_price():
     except Exception:
         pass
 
+    # جایگزین موقت در صورت قطعی تریدینگ‌ویو
     try:
         url = "https://data-asg.goldprice.org/dbXRates/USD"
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -127,6 +104,34 @@ def fetch_gold_price():
                 val = float(items[0].get("xauPrice", 0))
                 if val > 500:
                     return val
+    except Exception:
+        pass
+    return None
+
+# --- دریافت قیمت بیت‌کوین مستقیماً از TradingView با جایگزین بایننس ---
+def fetch_btc_price():
+    url = "https://scanner.tradingview.com/crypto/scan"
+    payload = {"symbols": {"tickers": ["BINANCE:BTCUSDT"]}, "columns": ["close"]}
+    headers = {"User-Agent": "Mozilla/5.0", "Origin": "https://www.tradingview.com", "Referer": "https://www.tradingview.com/"}
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("data"):
+                val = float(data["data"][0]["d"][0])
+                if val > 1000:
+                    return val
+    except Exception:
+        pass
+
+    # جایگزین موقت (Binance API) در صورت قطعی تریدینگ‌ویو
+    try:
+        url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            val = float(r.json()["price"])
+            if val > 1000:
+                return val
     except Exception:
         pass
     return None
@@ -369,7 +374,7 @@ def daily_and_periodic_charts_loop():
             print(f"خطا در چارت‌های دوره‌ای: {repr(e)}")
             time.sleep(60)
 
-# ---- ۴. حلقه قیمت‌های لحظه‌ای (بدون محدودیت و شرط‌های سخت‌گیرانه) ----
+# ---- ۴. حلقه قیمت‌های لحظه‌ای ----
 def bot_loop():
     global last_usdt_bid, last_btc_usdt, last_xau_usd
     global last_gold_18k_nobitex, last_gold_18k_global
@@ -415,7 +420,7 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر و کریپتو (بدون شرط مقایسه قیمت قدیم و جدید) ---
+            # --- بخش تتر و کریپتو ---
             usdt_bid_val = int(usdt_bid / 10) if (usdt_bid and usdt_bid > 100000) else (int(usdt_last / 10) if (usdt_last and usdt_last > 100000) else (last_usdt_bid or 60000))
             btc_usdt_val = round(btc_last, 2) if btc_last else (last_btc_usdt or 60000.0)
 
