@@ -23,20 +23,20 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# تاریخچه‌ها (پر شده با مقادیر اولیه برای جلوگیری از خطای چارت خالی)
-btc_history_10m = [65000] * 5
+# تاریخچه‌ها
+btc_history_10m = [65000.0] * 5
 gold_toman_10m = [3500000] * 5
 gold_global_10m = [3500000] * 5
 usdt_history_10m = [60000] * 5
 time_history_10m = ["00:00"] * 5
 
-btc_history_1h = [65000] * 5
+btc_history_1h = [65000.0] * 5
 gold_toman_1h = [3500000] * 5
 gold_global_1h = [3500000] * 5
 usdt_history_1h = [60000] * 5
 time_history_1h = ["00:00"] * 5
 
-btc_history_daily = [65000] * 5
+btc_history_daily = [65000.0] * 5
 gold_toman_daily = [3500000] * 5
 gold_global_daily = [3500000] * 5
 usdt_history_daily = [60000] * 5
@@ -78,14 +78,33 @@ def fetch_nobitex_orderbook(symbol):
         print(f"[{get_iran_time_date()}] Nobitex error ({symbol}): {repr(e)}")
     return None, None, None
 
-# --- دریافت قیمت بیت‌کوین از نوبیتکس (BTCIRT) با پشتیبان ---
-def fetch_btc_price_nobitex():
-    bid, ask, last = fetch_nobitex_orderbook("BTCIRT")
+# --- دریافت قیمت واقعی تتر بر اساس آخرین معامله (lastTradePrice) ---
+def fetch_usdt_real_price():
+    _, _, last_trade = fetch_nobitex_orderbook("USDTIRT")
+    if last_trade and last_trade > 100000:
+        return float(last_trade)
+    
+    # روش پشتیبان از API عمومی بازارها در صورت خطای اوردربوک
+    try:
+        url = "https://api.nobitex.ir/market/stats"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            stats = r.json().get("stats", {})
+            usdt_stat = stats.get("usdt-irt", {})
+            val = float(usdt_stat.get("latest", 0))
+            if val > 100000:
+                return val
+    except Exception:
+        pass
+    return None
+
+# --- دریافت قیمت بیت‌کوین دلاری (BTCUSDT) ---
+def fetch_btc_price_usdt():
+    bid, ask, last = fetch_nobitex_orderbook("BTCUSDT")
     val = bid if bid else (last if last else None)
-    if val and val > 1000000:
+    if val and val > 1000:
         return float(val)
     
-    # پشتیبان تریدینگ‌ویو/بایننس در صورت خطای صرافی
     try:
         url = "https://scanner.tradingview.com/crypto/scan"
         payload = {"symbols": {"tickers": ["BINANCE:BTCUSDT"]}, "columns": ["close"]}
@@ -125,7 +144,7 @@ def fetch_gold_price():
                     return val
     except Exception:
         pass
-    return 2650.0  # مقدار پیش‌فرض امن برای جلوگیری از خالی ماندن
+    return 2650.0
 
 def get_arrow(new_val, old_val):
     if old_val is None or new_val == old_val:
@@ -380,10 +399,11 @@ def bot_loop():
             
             xau_usd = fetch_gold_price()
             xaut_bid, xaut_ask, xaut_last = fetch_nobitex_orderbook("XAUTIRT")
-            usdt_bid, usdt_ask, usdt_last = fetch_nobitex_orderbook("USDTIRT")
-            btc_irt_val = fetch_btc_price_nobitex()
+            usdt_real_val = fetch_usdt_real_price()
+            _, _, usdt_last_trade = fetch_nobitex_orderbook("USDTIRT")
+            btc_usdt_val_raw = fetch_btc_price_usdt()
 
-            usdt_mid = usdt_bid if usdt_bid else usdt_last
+            usdt_mid = usdt_real_val if usdt_real_val else usdt_last_trade
 
             # --- بخش طلا ---
             if xau_usd and xau_usd > 500 and usdt_mid and usdt_mid > 10000:
@@ -411,19 +431,19 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر و بیت‌کوین (نوبیتکس تومان) ---
-            usdt_bid_val = int(usdt_bid / 10) if (usdt_bid and usdt_bid > 100000) else (int(usdt_last / 10) if (usdt_last and usdt_last > 100000) else (last_usdt_bid or 60000))
-            btc_toman_val = int(btc_irt_val / 10) if (btc_irt_val and btc_irt_val > 1000000) else (last_btc_usdt or 4000000000)
+            # --- بخش تتر و بیت‌کوین (معاملات واقعی) ---
+            usdt_bid_val = int(usdt_mid / 10) if (usdt_mid and usdt_mid > 100000) else (last_usdt_bid or 60000)
+            btc_usdt_val = round(btc_usdt_val_raw, 2) if (btc_usdt_val_raw and btc_usdt_val_raw > 1000) else (last_btc_usdt or 65000.0)
 
-            if usdt_bid_val > 10000 and btc_toman_val > 100000:
+            if usdt_bid_val > 10000 and btc_usdt_val > 1000:
                 crypto_msg = (
                     f"💵 <b>تتر:</b> {usdt_bid_val:,} تومان {get_arrow(usdt_bid_val, last_usdt_bid)}\n"
-                    f"🪙 <b>بیت‌کوین:</b> {btc_toman_val:,} تومان {get_arrow(btc_toman_val, last_btc_usdt)}\n"
+                    f"🪙 <b>بیت‌کوین:</b> ${btc_usdt_val:,.2f} {get_arrow(btc_usdt_val, last_btc_usdt)}\n"
                     f"⏰ {now_str}"
                 )
                 send_message(crypto_msg)
 
-                last_btc_usdt = btc_toman_val
+                last_btc_usdt = btc_usdt_val
                 last_usdt_bid = usdt_bid_val
 
             time.sleep(10)
