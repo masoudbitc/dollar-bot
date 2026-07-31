@@ -23,23 +23,26 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# تاریخچه‌ها
+# تاریخچه‌ها (شامل انس طلا)
 btc_history_10m = []
 gold_toman_10m = []
 gold_global_10m = []
 usdt_history_10m = []
+xau_history_10m = []
 time_history_10m = []
 
 btc_history_1h = []
 gold_toman_1h = []
 gold_global_1h = []
 usdt_history_1h = []
+xau_history_1h = []
 time_history_1h = []
 
 btc_history_daily = []
 gold_toman_daily = []
 gold_global_daily = []
 usdt_history_daily = []
+xau_history_daily = []
 
 last_usdt_bid = None
 last_btc_usdt = None
@@ -272,11 +275,12 @@ def chart_10m_loop():
                 time.sleep(10)
                 continue
 
-            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid and last_xau_usd:
                 btc_history_10m.append(last_btc_usdt)
                 gold_toman_10m.append(last_gold_18k_nobitex)
                 gold_global_10m.append(last_gold_18k_global)
                 usdt_history_10m.append(last_usdt_bid)
+                xau_history_10m.append(last_xau_usd)
                 time_history_10m.append(now_chk.strftime("%H:%M"))
                 
                 if len(btc_history_10m) > 30:
@@ -284,6 +288,7 @@ def chart_10m_loop():
                     gold_toman_10m.pop(0)
                     gold_global_10m.pop(0)
                     usdt_history_10m.pop(0)
+                    xau_history_10m.pop(0)
                     time_history_10m.pop(0)
 
                 publish_chart("بیتکوین", "10 دقیقه ای", btc_history_10m, time_history_10m, "rgb(247, 147, 26)")
@@ -291,6 +296,8 @@ def chart_10m_loop():
                 publish_dual_gold_chart("10 دقیقه ای", gold_toman_10m, gold_global_10m, time_history_10m)
                 time.sleep(3)
                 publish_chart("تتر", "10 دقیقه ای", usdt_history_10m, time_history_10m, "rgb(38, 166, 154)")
+                time.sleep(3)
+                publish_chart("انس طلا", "10 دقیقه ای", xau_history_10m, time_history_10m, "rgb(234, 179, 8)")
 
         except Exception as e:
             print(f"خطا در چارت ۱۰ دقیقه‌ای: {repr(e)}")
@@ -307,11 +314,12 @@ def chart_1h_loop():
             if now.hour == 21:
                 continue
 
-            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid and last_xau_usd:
                 btc_history_1h.append(last_btc_usdt)
                 gold_toman_1h.append(last_gold_18k_nobitex)
                 gold_global_1h.append(last_gold_18k_global)
                 usdt_history_1h.append(last_usdt_bid)
+                xau_history_1h.append(last_xau_usd)
                 time_history_1h.append(now.strftime("%H:%M"))
 
                 if len(btc_history_1h) > 24:
@@ -319,6 +327,7 @@ def chart_1h_loop():
                     gold_toman_1h.pop(0)
                     gold_global_1h.pop(0)
                     usdt_history_1h.pop(0)
+                    xau_history_1h.pop(0)
                     time_history_1h.pop(0)
 
                 publish_chart("بیتکوین", "1 ساعته", btc_history_1h, time_history_1h, "rgb(247, 147, 26)")
@@ -326,6 +335,8 @@ def chart_1h_loop():
                 publish_dual_gold_chart("1 ساعته", gold_toman_1h, gold_global_1h, time_history_1h)
                 time.sleep(3)
                 publish_chart("تتر", "1 ساعته", usdt_history_1h, time_history_1h, "rgb(38, 166, 154)")
+                time.sleep(3)
+                publish_chart("انس طلا", "1 ساعته", xau_history_1h, time_history_1h, "rgb(234, 179, 8)")
         except Exception as e:
             print(f"خطا در چارت ۱ ساعته: {repr(e)}")
             time.sleep(60)
@@ -342,17 +353,19 @@ def daily_and_periodic_charts_loop():
             now = get_iran_datetime()
             j_now = jdatetime.datetime.fromgregorian(datetime=now)
 
-            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid and last_xau_usd:
                 btc_history_daily.append(last_btc_usdt)
                 gold_toman_daily.append(last_gold_18k_nobitex)
                 gold_global_daily.append(last_gold_18k_global)
                 usdt_history_daily.append(last_usdt_bid)
+                xau_history_daily.append(last_xau_usd)
                 
                 if len(btc_history_daily) > 30:
                     btc_history_daily.pop(0)
                     gold_toman_daily.pop(0)
                     gold_global_daily.pop(0)
                     usdt_history_daily.pop(0)
+                    xau_history_daily.pop(0)
                 
                 dates_list = [jdatetime.datetime.fromgregorian(datetime=now).strftime("%m/%d")] * len(btc_history_daily)
 
@@ -362,6 +375,8 @@ def daily_and_periodic_charts_loop():
                     publish_dual_gold_chart(timeframe_name, gold_toman_daily, gold_global_daily, dates_list)
                     time.sleep(3)
                     publish_chart("تتر", timeframe_name, usdt_history_daily, dates_list, "rgb(38, 166, 154)")
+                    time.sleep(3)
+                    publish_chart("انس طلا", timeframe_name, xau_history_daily, dates_list, "rgb(234, 179, 8)")
                     time.sleep(3)
 
                 send_all_periodic("روزانه")
