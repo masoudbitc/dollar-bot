@@ -23,23 +23,23 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# تاریخچه‌ها
-btc_history_10m = [65000.0] * 5
-gold_toman_10m = [3500000] * 5
-gold_global_10m = [3500000] * 5
-usdt_history_10m = [60000] * 5
-time_history_10m = ["00:00"] * 5
+# تاریخچه‌ها (شروع خالی برای جلوگیری از اطلاعات غیردقیق اولیه)
+btc_history_10m = []
+gold_toman_10m = []
+gold_global_10m = []
+usdt_history_10m = []
+time_history_10m = []
 
-btc_history_1h = [65000.0] * 5
-gold_toman_1h = [3500000] * 5
-gold_global_1h = [3500000] * 5
-usdt_history_1h = [60000] * 5
-time_history_1h = ["00:00"] * 5
+btc_history_1h = []
+gold_toman_1h = []
+gold_global_1h = []
+usdt_history_1h = []
+time_history_1h = []
 
-btc_history_daily = [65000.0] * 5
-gold_toman_daily = [3500000] * 5
-gold_global_daily = [3500000] * 5
-usdt_history_daily = [60000] * 5
+btc_history_daily = []
+gold_toman_daily = []
+gold_global_daily = []
+usdt_history_daily = []
 
 last_usdt_bid = None
 last_btc_usdt = None
@@ -84,7 +84,6 @@ def fetch_usdt_real_price():
     if last_trade and last_trade > 100000:
         return float(last_trade)
     
-    # روش پشتیبان از API عمومی بازارها در صورت خطای اوردربوک
     try:
         url = "https://api.nobitex.ir/market/stats"
         r = requests.get(url, timeout=5)
@@ -98,13 +97,8 @@ def fetch_usdt_real_price():
         pass
     return None
 
-# --- دریافت قیمت بیت‌کوین دلاری (BTCUSDT) ---
+# --- دریافت قیمت بیت‌کوین دلاری منحصراً از TradingView ---
 def fetch_btc_price_usdt():
-    bid, ask, last = fetch_nobitex_orderbook("BTCUSDT")
-    val = bid if bid else (last if last else None)
-    if val and val > 1000:
-        return float(val)
-    
     try:
         url = "https://scanner.tradingview.com/crypto/scan"
         payload = {"symbols": {"tickers": ["BINANCE:BTCUSDT"]}, "columns": ["close"]}
@@ -112,9 +106,11 @@ def fetch_btc_price_usdt():
         if r.status_code == 200:
             data = r.json()
             if data.get("data"):
-                return float(data["data"][0]["d"][0])
-    except Exception:
-        pass
+                val = float(data["data"][0]["d"][0])
+                if val > 1000:
+                    return val
+    except Exception as e:
+        print(f"[{get_iran_time_date()}] TradingView BTC error: {repr(e)}")
     return None
 
 # --- دریافت قیمت انس طلا از TradingView ---
@@ -227,7 +223,7 @@ def get_quickchart_dual_url(labels, data1, label1, color1, data2, label2, color2
     return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
 
 def publish_chart(asset_name, timeframe_str, data_list, times_list, color):
-    if not data_list:
+    if not data_list or len(data_list) < 2:
         return
     now_dt = get_iran_datetime()
     j_now = jdatetime.datetime.fromgregorian(datetime=now_dt)
@@ -240,7 +236,7 @@ def publish_chart(asset_name, timeframe_str, data_list, times_list, color):
     send_photo_url(chart_url, caption)
 
 def publish_dual_gold_chart(timeframe_str, toman_data, global_data, times_list):
-    if not toman_data or not global_data:
+    if not toman_data or not global_data or len(toman_data) < 2:
         return
     now_dt = get_iran_datetime()
     j_now = jdatetime.datetime.fromgregorian(datetime=now_dt)
@@ -431,9 +427,9 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر و بیت‌کوین (معاملات واقعی) ---
-            usdt_bid_val = int(usdt_mid / 10) if (usdt_mid and usdt_mid > 100000) else (last_usdt_bid or 60000)
-            btc_usdt_val = round(btc_usdt_val_raw, 2) if (btc_usdt_val_raw and btc_usdt_val_raw > 1000) else (last_btc_usdt or 65000.0)
+            # --- بخش تتر و بیت‌کوین (بیت‌کوین صرفاً از تریدینگ‌ویو) ---
+            usdt_bid_val = int(usdt_mid / 10) if (usdt_mid and usdt_mid > 100000) else (last_usdt_bid or 0)
+            btc_usdt_val = round(btc_usdt_val_raw, 2) if (btc_usdt_val_raw and btc_usdt_val_raw > 1000) else (last_btc_usdt or 0)
 
             if usdt_bid_val > 10000 and btc_usdt_val > 1000:
                 crypto_msg = (
