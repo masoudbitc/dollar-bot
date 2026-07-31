@@ -25,16 +25,21 @@ CHAT_ID = -1003721340249
 
 # ذخیره تاریخچه قیمت‌ها برای تایم‌فریم‌های مختلف
 btc_history_10m = []
-gold_history_10m = []
+gold_toman_10m = []
+gold_global_10m = []
+usdt_history_10m = []
 time_history_10m = []
 
 btc_history_1h = []
-gold_history_1h = []
+gold_toman_1h = []
+gold_global_1h = []
+usdt_history_1h = []
 time_history_1h = []
 
 btc_history_daily = []
-gold_history_daily = []
-time_history_daily = []
+gold_toman_daily = []
+gold_global_daily = []
+usdt_history_daily = []
 
 last_usdt_bid = None
 last_btc_usdt = None
@@ -47,9 +52,13 @@ def get_iran_datetime():
     iran_offset = timezone(timedelta(hours=3, minutes=30))
     return datetime.now(iran_offset)
 
-def get_iran_time():
-    """دریافت زمان دقیق ایران"""
-    return get_iran_datetime().strftime("%H:%M:%S")
+def get_iran_time_date():
+    """فرمت جدید: ساعت در سمت چپ، تاریخ شمسی در سمت راست (14:22:16 - 1405/5/8)"""
+    now = get_iran_datetime()
+    j_now = jdatetime.datetime.fromgregorian(datetime=now)
+    time_str = now.strftime("%H:%M:%S")
+    date_str = j_now.strftime("%Y/%m/%d")
+    return f"{time_str} - {date_str}"
 
 def fetch_nobitex_orderbook(symbol):
     headers = {
@@ -68,7 +77,7 @@ def fetch_nobitex_orderbook(symbol):
             last_trade = float(data.get("lastTradePrice", 0)) if data.get("lastTradePrice") else None
             return best_bid, best_ask, last_trade
     except Exception as e:
-        print(f"[{get_iran_time()}] Nobitex error ({symbol}): {repr(e)}")
+        print(f"[{get_iran_time_date()}] Nobitex error ({symbol}): {repr(e)}")
     return None, None, None
 
 def fetch_btc_coingecko():
@@ -78,7 +87,7 @@ def fetch_btc_coingecko():
         if r.status_code == 200:
             return float(r.json()["bitcoin"]["usd"])
     except Exception as e:
-        print(f"[{get_iran_time()}] CoinGecko error: {repr(e)}")
+        print(f"[{get_iran_time_date()}] CoinGecko error: {repr(e)}")
     return None
 
 def fetch_tradingview_gold():
@@ -96,7 +105,7 @@ def fetch_tradingview_gold():
             if data.get("data"):
                 return float(data["data"][0]["d"][0])
     except Exception as e:
-        print(f"[{get_iran_time()}] TradingView error: {repr(e)}")
+        print(f"[{get_iran_time_date()}] TradingView error: {repr(e)}")
     return None
 
 def get_arrow(new_val, old_val):
@@ -153,38 +162,84 @@ def get_quickchart_url(labels, data, title, color="rgb(247, 147, 26)"):
     encoded = urllib.parse.quote(json_str)
     return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
 
+def get_quickchart_dual_url(labels, data1, label1, color1, data2, label2, color2, title):
+    chart_config = {
+        "type": "line",
+        "data": {
+            "labels": labels,
+            "datasets": [
+                {"label": label1, "data": data1, "borderColor": color1, "backgroundColor": color1.replace("rgb", "rgba").replace(")", ", 0.1)"), "fill": False, "borderWidth": 2, "pointRadius": 2},
+                {"label": label2, "data": data2, "borderColor": color2, "backgroundColor": color2.replace("rgb", "rgba").replace(")", ", 0.1)"), "fill": False, "borderWidth": 2, "pointRadius": 2}
+            ]
+        },
+        "options": {
+            "title": {"display": True, "text": title, "fontColor": "#fff", "fontSize": 15},
+            "legend": {"display": True, "labels": {"fontColor": "#ccc"}},
+            "scales": {
+                "xAxes": [{"ticks": {"fontColor": "#ccc", "maxRotation": 45}}],
+                "yAxes": [{"ticks": {"fontColor": "#ccc"}}]
+            }
+        }
+    }
+    json_str = json.dumps(chart_config)
+    encoded = urllib.parse.quote(json_str)
+    return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
+
 def publish_chart(asset_name, timeframe_str, data_list, times_list, color):
     if not data_list:
         return
-    now_str = get_iran_time()
+    now_str = get_iran_time_date()
     title = f"چارت {asset_name} - تایم فریم {timeframe_str}"
     chart_url = get_quickchart_url(times_list, data_list, title, color)
     caption = f"📊 <b>{title}</b>\n⏰ {now_str}"
     send_photo_url(chart_url, caption)
 
+def publish_dual_gold_chart(timeframe_str, toman_data, global_data, times_list):
+    if not toman_data or not global_data:
+        return
+    now_str = get_iran_time_date()
+    title = f"چارت مقایسه‌ای طلا ۱۸ عیار - تایم فریم {timeframe_str}"
+    chart_url = get_quickchart_dual_url(
+        times_list, 
+        toman_data, "طلا/تومان ۱۸ عیار", "rgb(255, 215, 0)", 
+        global_data, "طلا/تتر ۱۸ عیار", "rgb(38, 166, 154)", 
+        title
+    )
+    caption = f"📊 <b>{title}</b>\n⏰ {now_str}"
+    send_photo_url(chart_url, caption)
+
 # ---- ۳. حلقه‌های زمان‌بندی چارت‌ها ----
 def chart_10m_loop():
-    """چارت هر ۱۰ دقیقه یک‌بار"""
+    """چارت هر ۱۰ دقیقه یک‌بار (بدون تداخل با ساعات رند)"""
     time.sleep(30)
     while True:
         try:
-            now_str = get_iran_time()
-            if last_btc_usdt and last_xau_usd:
-                btc_history_10m.append(last_btc_usdt)
-                gold_history_10m.append(last_xau_usd)
-                time_history_10m.append(now_str[:5])
-                
-                if len(btc_history_10m) > 30:
-                    btc_history_10m.pop(0)
-                    gold_history_10m.pop(0)
-                    time_history_10m.pop(0)
+            now = get_iran_datetime()
+            # اگر دقیقه در بازه رند (ساعت کامل یا ۲۱:۰۰) بود، ۱۰ دقیقه‌ای را رد کن تا تداخل نشود
+            if now.minute != 0 and not (now.hour == 21 and now.minute < 10):
+                now_str = get_iran_time_date()
+                if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid:
+                    btc_history_10m.append(last_btc_usdt)
+                    gold_toman_10m.append(last_gold_18k_nobitex)
+                    gold_global_10m.append(last_gold_18k_global)
+                    usdt_history_10m.append(last_usdt_bid)
+                    time_history_10m.append(now.strftime("%H:%M"))
+                    
+                    if len(btc_history_10m) > 30:
+                        btc_history_10m.pop(0)
+                        gold_toman_10m.pop(0)
+                        gold_global_10m.pop(0)
+                        usdt_history_10m.pop(0)
+                        time_history_10m.pop(0)
 
-                publish_chart("بیتکوین", "10 دقیقه ای", btc_history_10m, time_history_10m, "rgb(247, 147, 26)")
-                time.sleep(3)
-                publish_chart("انس جهانی طلا", "10 دقیقه ای", gold_history_10m, time_history_10m, "rgb(255, 215, 0)")
+                    publish_chart("بیتکوین", "10 دقیقه ای", btc_history_10m, time_history_10m, "rgb(247, 147, 26)")
+                    time.sleep(3)
+                    publish_dual_gold_chart("10 دقیقه ای", gold_toman_10m, gold_global_10m, time_history_10m)
+                    time.sleep(3)
+                    publish_chart("تتر", "10 دقیقه ای", usdt_history_10m, time_history_10m, "rgb(38, 166, 154)")
         except Exception as e:
             print(f"خطا در چارت ۱۰ دقیقه‌ای: {repr(e)}")
-        time.sleep(600) # هر 10 دقیقه
+        time.sleep(600)
 
 def chart_1h_loop():
     """چارت هر ۱ ساعت رند"""
@@ -195,26 +250,35 @@ def chart_1h_loop():
             next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
             time.sleep((next_hour - now).total_seconds())
 
-            now_str = get_iran_time()
-            if last_btc_usdt and last_xau_usd:
+            now = get_iran_datetime()
+            if now.hour == 21:  # اگر ساعت ۲۱ بود، بگذار حلقه دوره‌ای کارش را بکند
+                continue
+
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid:
                 btc_history_1h.append(last_btc_usdt)
-                gold_history_1h.append(last_xau_usd)
-                time_history_1h.append(now_str[:5])
+                gold_toman_1h.append(last_gold_18k_nobitex)
+                gold_global_1h.append(last_gold_18k_global)
+                usdt_history_1h.append(last_usdt_bid)
+                time_history_1h.append(now.strftime("%H:%M"))
 
                 if len(btc_history_1h) > 24:
                     btc_history_1h.pop(0)
-                    gold_history_1h.pop(0)
+                    gold_toman_1h.pop(0)
+                    gold_global_1h.pop(0)
+                    usdt_history_1h.pop(0)
                     time_history_1h.pop(0)
 
                 publish_chart("بیتکوین", "1 ساعته", btc_history_1h, time_history_1h, "rgb(247, 147, 26)")
                 time.sleep(3)
-                publish_chart("انس جهانی طلا", "1 ساعته", gold_history_1h, time_history_1h, "rgb(255, 215, 0)")
+                publish_dual_gold_chart("1 ساعته", gold_toman_1h, gold_global_1h, time_history_1h)
+                time.sleep(3)
+                publish_chart("تتر", "1 ساعته", usdt_history_1h, time_history_1h, "rgb(38, 166, 154)")
         except Exception as e:
             print(f"خطا در چارت ۱ ساعته: {repr(e)}")
             time.sleep(60)
 
 def daily_and_periodic_charts_loop():
-    """بقیه چارت‌ها رأس ساعت ۲۱:۰۰ هر روز"""
+    """سایر چارت‌ها رأس ساعت ۲۱:۰۰ هر روز"""
     time.sleep(50)
     while True:
         try:
@@ -227,44 +291,43 @@ def daily_and_periodic_charts_loop():
             now = get_iran_datetime()
             j_now = jdatetime.datetime.fromgregorian(datetime=now)
 
-            # ۱. چارت روزانه (۲۴ ساعته) - هر روز ساعت ۲۱
-            if last_btc_usdt and last_xau_usd:
+            if last_btc_usdt and last_gold_18k_nobitex and last_gold_18k_global and last_usdt_bid:
                 btc_history_daily.append(last_btc_usdt)
-                gold_history_daily.append(last_xau_usd)
+                gold_toman_daily.append(last_gold_18k_nobitex)
+                gold_global_daily.append(last_gold_18k_global)
+                usdt_history_daily.append(last_usdt_bid)
+                
                 if len(btc_history_daily) > 30:
                     btc_history_daily.pop(0)
-                    gold_history_daily.pop(0)
+                    gold_toman_daily.pop(0)
+                    gold_global_daily.pop(0)
+                    usdt_history_daily.pop(0)
                 
-                dates_list = [(jdatetime.datetime.fromgregorian(datetime=now).strftime("%m/%d"))] * len(btc_history_daily)
+                dates_list = [jdatetime.datetime.fromgregorian(datetime=now).strftime("%m/%d")] * len(btc_history_daily)
 
-                publish_chart("بیتکوین", "روزانه", btc_history_daily, dates_list, "rgb(247, 147, 26)")
-                time.sleep(3)
-                publish_chart("انس جهانی طلا", "روزانه", gold_history_daily, dates_list, "rgb(255, 215, 0)")
-                time.sleep(3)
+                def send_all_periodic(timeframe_name):
+                    publish_chart("بیتکوین", timeframe_name, btc_history_daily, dates_list, "rgb(247, 147, 26)")
+                    time.sleep(3)
+                    publish_dual_gold_chart(timeframe_name, gold_toman_daily, gold_global_daily, dates_list)
+                    time.sleep(3)
+                    publish_chart("تتر", timeframe_name, usdt_history_daily, dates_list, "rgb(38, 166, 154)")
+                    time.sleep(3)
 
-            # ۲. چارت هفتگی (روزهای جمعه)
-            if now.weekday() == 4:
-                publish_chart("بیتکوین", "هفتگی", btc_history_daily, dates_list, "rgb(247, 147, 26)")
-                time.sleep(3)
-                publish_chart("انس جهانی طلا", "هفتگی", gold_history_daily, dates_list, "rgb(255, 215, 0)")
-                time.sleep(3)
+                # ۱. روزانه
+                send_all_periodic("روزانه")
 
-            # ۳. چارت ماهانه (اول هر ماه شمسی)
-            if j_now.day == 1:
-                publish_chart("بیتکوین", "ماهانه", btc_history_daily, dates_list, "rgb(247, 147, 26)")
-                time.sleep(3)
-                publish_chart("انس جهانی طلا", "ماهانه", gold_history_daily, dates_list, "rgb(255, 215, 0)")
-                time.sleep(3)
+                # ۲. هفتگی (جمعه‌ها)
+                if now.weekday() == 4:
+                    send_all_periodic("هفتگی")
 
-            # ۴. چارت فصلی و سالانه (اول فصل‌های شمسی: ۱ فروردین، تیر، مهر، دی)
-            if j_now.day == 1 and j_now.month in [1, 4, 7, 10]:
-                publish_chart("بیتکوین", "فصلی", btc_history_daily, dates_list, "rgb(247, 147, 26)")
-                time.sleep(3)
-                publish_chart("انس جهانی طلا", "فصلی", gold_history_daily, dates_list, "rgb(255, 215, 0)")
-                time.sleep(3)
-                publish_chart("بیتکوین", "سالیانه", btc_history_daily, dates_list, "rgb(247, 147, 26)")
-                time.sleep(3)
-                publish_chart("انس جهانی طلا", "سالیانه", gold_history_daily, dates_list, "rgb(255, 215, 0)")
+                # ۳. ماهانه (اول ماه)
+                if j_now.day == 1:
+                    send_all_periodic("ماهانه")
+
+                # ۴. فصلی و سالانه (اول فصل‌ها)
+                if j_now.day == 1 and j_now.month in [1, 4, 7, 10]:
+                    send_all_periodic("فصلی")
+                    send_all_periodic("سالیانه")
 
         except Exception as e:
             print(f"خطا در چارت‌های دوره‌ای: {repr(e)}")
@@ -275,13 +338,13 @@ def bot_loop():
     global last_usdt_bid, last_btc_usdt, last_xau_usd
     global last_gold_18k_nobitex, last_gold_18k_global
     
-    current_time = get_iran_time()
-    print(f"ربات شروع شد | ساعت ایران: {current_time}")
+    current_time = get_iran_time_date()
+    print(f"ربات شروع شد | زمان: {current_time}")
     send_message(f"🤖 <b>ربات فعال شد!</b>\n⏰ {current_time}")
 
     while True:
         try:
-            now_str = get_iran_time()
+            now_str = get_iran_time_date()
             
             xau_usd = fetch_tradingview_gold()
             xaut_bid, xaut_ask, xaut_last = fetch_nobitex_orderbook("XAUTIRT")
@@ -292,13 +355,12 @@ def bot_loop():
                 btc_last = fetch_btc_coingecko()
 
             usdt_mid = usdt_bid if usdt_bid else usdt_last
-            xaut_mid = xaut_bid if xaut_bid else xaut_last
 
             # --- بخش طلا ---
-            if xau_usd is not None or xaut_mid is not None:
+            if xau_usd is not None or usdt_mid is not None:
                 xau_usd_val = round(xau_usd, 2) if xau_usd else 0.0
-                xaut_irt_val = int(xaut_mid / 10) if (xaut_mid and xaut_mid > 1000000) else int(xaut_mid or 0)
                 usdt_toman = int(usdt_mid / 10) if (usdt_mid and usdt_mid > 100000) else int(usdt_mid or 60000)
+                xaut_irt_val = int(xaut_bid / 10) if (xaut_bid and xaut_bid > 1000000) else int(xaut_last / 10 if xaut_last else 0)
 
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0)) if xaut_irt_val else 0
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0)) if (xau_usd_val and usdt_toman) else 0
@@ -318,12 +380,13 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر و کریپتو (فقط تتر خرید) ---
+            # --- بخش تتر و کریپتو ---
             if usdt_bid is not None or btc_last is not None:
                 usdt_bid_val = int(usdt_bid / 10) if (usdt_bid and usdt_bid > 100000) else int(usdt_bid or 0)
                 btc_usdt_val = round(btc_last, 2) if btc_last else 0.0
 
                 last_btc_usdt = btc_usdt_val
+                last_usdt_bid = usdt_bid_val
 
                 if last_usdt_bid is None or (usdt_bid_val != last_usdt_bid) or (btc_usdt_val != last_btc_usdt):
                     crypto_msg = (
@@ -332,9 +395,6 @@ def bot_loop():
                         f"⏰ {now_str}"
                     )
                     send_message(crypto_msg)
-
-                    last_usdt_bid = usdt_bid_val
-                    last_btc_usdt = btc_usdt_val
 
             time.sleep(10)
 
