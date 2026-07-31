@@ -23,7 +23,7 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# تاریخچه‌ها (شروع خالی برای جلوگیری از اطلاعات غیردقیق اولیه)
+# تاریخچه‌ها
 btc_history_10m = []
 gold_toman_10m = []
 gold_global_10m = []
@@ -78,7 +78,6 @@ def fetch_nobitex_orderbook(symbol):
         print(f"[{get_iran_time_date()}] Nobitex error ({symbol}): {repr(e)}")
     return None, None, None
 
-# --- دریافت قیمت واقعی تتر بر اساس آخرین معامله (lastTradePrice) ---
 def fetch_usdt_real_price():
     _, _, last_trade = fetch_nobitex_orderbook("USDTIRT")
     if last_trade and last_trade > 100000:
@@ -97,7 +96,6 @@ def fetch_usdt_real_price():
         pass
     return None
 
-# --- دریافت قیمت بیت‌کوین دلاری منحصراً از TradingView ---
 def fetch_btc_price_usdt():
     try:
         url = "https://scanner.tradingview.com/crypto/scan"
@@ -113,7 +111,6 @@ def fetch_btc_price_usdt():
         print(f"[{get_iran_time_date()}] TradingView BTC error: {repr(e)}")
     return None
 
-# --- دریافت قیمت انس طلا از TradingView ---
 def fetch_gold_price():
     url = "https://scanner.tradingview.com/global/scan"
     payload = {"symbols": {"tickers": ["TVC:GOLD"]}, "columns": ["close"]}
@@ -223,7 +220,7 @@ def get_quickchart_dual_url(labels, data1, label1, color1, data2, label2, color2
     return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
 
 def publish_chart(asset_name, timeframe_str, data_list, times_list, color):
-    if not data_list or len(data_list) < 2:
+    if not data_list or len(data_list) < 1:
         return
     now_dt = get_iran_datetime()
     j_now = jdatetime.datetime.fromgregorian(datetime=now_dt)
@@ -236,7 +233,7 @@ def publish_chart(asset_name, timeframe_str, data_list, times_list, color):
     send_photo_url(chart_url, caption)
 
 def publish_dual_gold_chart(timeframe_str, toman_data, global_data, times_list):
-    if not toman_data or not global_data or len(toman_data) < 2:
+    if not toman_data or not global_data or len(toman_data) < 1:
         return
     now_dt = get_iran_datetime()
     j_now = jdatetime.datetime.fromgregorian(datetime=now_dt)
@@ -427,7 +424,7 @@ def bot_loop():
 
             time.sleep(3)
 
-            # --- بخش تتر و بیت‌کوین (بیت‌کوین صرفاً از تریدینگ‌ویو) ---
+            # --- بخش تتر و بیت‌کوین ---
             usdt_bid_val = int(usdt_mid / 10) if (usdt_mid and usdt_mid > 100000) else (last_usdt_bid or 0)
             btc_usdt_val = round(btc_usdt_val_raw, 2) if (btc_usdt_val_raw and btc_usdt_val_raw > 1000) else (last_btc_usdt or 0)
 
