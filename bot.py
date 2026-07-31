@@ -22,15 +22,10 @@ def run_flask():
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = -1003721340249
 
-# ذخیره تاریخچه داده‌های OHLC برای نمودار کندلی (حداکثر ۱۲ کندل ساعتی)
-# ساختار هر کندل: [Open, High, Low, Close]
-btc_ohlc_history = []
-gold_ohlc_history = []
+# ذخیره تاریخچه قیمت‌ها برای رسم چارت (حداکثر ۳۰ نقطه)
+btc_history = []
+gold_history = []
 time_history = []
-
-# متغیرهای موقت برای محاسبه کندل فعلی
-current_btc_prices = []
-current_gold_prices = []
 
 last_usdt_bid = None
 last_usdt_ask = None
@@ -46,7 +41,7 @@ def get_iran_time():
     return datetime.now(iran_offset).strftime("%H:%M:%S")
 
 def fetch_nobitex_orderbook(symbol):
-    """دریافت قیمت از نوبیتکس"""
+    """دریافت قیمت از نوبیتکس با هدرهای استاندارد"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json"
@@ -67,7 +62,7 @@ def fetch_nobitex_orderbook(symbol):
     return None, None, None
 
 def fetch_btc_coingecko():
-    """منبع جایگزین برای قیمت بیت‌کوین"""
+    """منبع جایگزین برای قیمت بیت‌کوین در صورت قطع نوبیتکس"""
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
         r = requests.get(url, timeout=5)
@@ -130,112 +125,72 @@ def send_photo_url(photo_url, caption):
     except Exception as e:
         print(f"[{get_iran_time()}] خطا در ارسال عکس به تلگرام: {repr(e)}")
 
-def get_candlestick_chart_url(labels, ohlc_data, title):
-    """تولید نمودار کندلی (Candlestick) حرفه‌ای با QuickChart"""
-    # ساختار ohlc_data باید فهرستی از لیست‌های [o, h, l, c] باشد
-    formatted_data = []
-    for d in ohlc_data:
-        formatted_data.append({"o": d[0], "h": d[1], "l": d[2], "c": d[3]})
-
+def get_quickchart_url(labels, data, title, color="rgb(247, 147, 26)"):
+    """تولید چارت تصویری سریع و استاندارد"""
     chart_config = {
-        "type": "candlestick",
+        "type": "line",
         "data": {
             "labels": labels,
             "datasets": [{
                 "label": title,
-                "data": formatted_data,
-                "color": {
-                    "up": "#26a69a",       # کندل صعودی (سبز)
-                    "down": "#ef5350",     # کندل نزولی (قرمز)
-                    "unchanged": "#888888"
-                }
+                "data": data,
+                "borderColor": color,
+                "backgroundColor": color.replace("rgb", "rgba").replace(")", ", 0.1)"),
+                "fill": True,
+                "borderWidth": 3,
+                "pointRadius": 4
             }]
         },
         "options": {
-            "title": {"display": True, "text": title, "fontColor": "#ffffff", "fontSize": 18},
+            "title": {"display": True, "text": title, "fontColor": "#fff", "fontSize": 16},
             "legend": {"display": False},
             "scales": {
-                "xAxes": [{"ticks": {"fontColor": "#cccccc"}}],
-                "yAxes": [{"ticks": {"fontColor": "#cccccc"}}]
+                "xAxes": [{"ticks": {"fontColor": "#ccc"}}],
+                "yAxes": [{"ticks": {"fontColor": "#ccc"}}]
             }
         }
     }
     json_str = json.dumps(chart_config)
     encoded = urllib.parse.quote(json_str)
-    return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=420&c={encoded}"
+    return f"https://quickchart.io/chart?bkg=%23131722&w=800&h=400&c={encoded}"
 
-# ---- 3. ارسال ساعتی چارت‌های تصویری کندلی (هر ۶۰ دقیقه) ----
+# ---- 3. پردازش ارسال چارت‌های تصویری (موقتاً هر ۲ دقیقه یک‌بار) ----
 def hourly_chart_loop():
-    """انتظار تا انتهای ساعت متداول و سپس ارسال چارت کندلی در انتهای هر ساعت"""
-    time.sleep(30)  # انتظار اولیه جهت شروع مطمئن
+    """ارسال اولیه ۱۵ ثانیه بعد از استارت و سپس هر ۲ دقیقه (۱۲۰ ثانیه)"""
+    time.sleep(15)
     
     while True:
         try:
-            now = datetime.now()
-            # محاسبه زمان باقی‌مانده تا سر ساعت بعدی
-            next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-            wait_seconds = (next_hour - now).total_seconds()
-            
-            print(f"[{get_iran_time()}] چارت ساعتی بعدی در {int(wait_seconds)} ثانیه دیگر ارسال می‌شود.")
-            time.sleep(wait_seconds)
-
             now_str = get_iran_time()
-            hour_label = now_str[:5]
-
-            # محاسبه کندل ساعتی بیت‌کوین (Open, High, Low, Close)
-            if current_btc_prices:
-                o_btc = current_btc_prices[0]
-                h_btc = max(current_btc_prices)
-                l_btc = min(current_btc_prices)
-                c_btc = current_btc_prices[-1]
-                btc_ohlc_history.append([o_btc, h_btc, l_btc, c_btc])
-                current_btc_prices.clear()
-            else:
-                p = last_btc_usdt or 65000.0
-                btc_ohlc_history.append([p, p, p, p])
-
-            # محاسبه کندل ساعتی طلا
-            if current_gold_prices:
-                o_gold = current_gold_prices[0]
-                h_gold = max(current_gold_prices)
-                l_gold = min(current_gold_prices)
-                c_gold = current_gold_prices[-1]
-                gold_ohlc_history.append([o_gold, h_gold, l_gold, c_gold])
-                current_gold_prices.clear()
-            else:
-                p = last_xau_usd or 2300.0
-                gold_ohlc_history.append([p, p, p, p])
-
-            time_history.append(hour_label)
-
-            # مدیریت طول تاریخچه کندل‌ها (حداکثر ۱۲ کندل اخیر)
-            if len(btc_ohlc_history) > 12: btc_ohlc_history.pop(0)
-            if len(gold_ohlc_history) > 12: gold_ohlc_history.pop(0)
-            if len(time_history) > 12: time_history.pop(0)
-
-            # ۱. ارسال چارت کندلی بیت‌کوین
-            btc_chart_url = get_candlestick_chart_url(time_history, btc_ohlc_history, "Bitcoin (BTC/USDT) Hourly Candlestick")
-            send_photo_url(btc_chart_url, f"📊 <b>نمودار کندلی بیت‌کوین (ساعتی)</b>\n⏰ <b>{now_str}</b>")
-
+            times = time_history if len(time_history) > 1 else [now_str[:5], now_str[:5]]
+            
+            # ۱. چارت بیت‌کوین
+            btc_prices = btc_history if len(btc_history) > 1 else ([last_btc_usdt, last_btc_usdt] if last_btc_usdt else [65000, 65000])
+            btc_chart_url = get_quickchart_url(times, btc_prices, "Bitcoin (BTC/USDT) 2-Min Chart Test", "rgb(247, 147, 26)")
+            send_photo_url(btc_chart_url, f"📊 <b>چارت نوسانات بیت‌کوین (تست ۲ دقیقه‌ای)</b>\n⏰ <b>{now_str}</b>")
+            
             time.sleep(3)
 
-            # ۲. ارسال چارت کندلی انس طلا
-            gold_chart_url = get_candlestick_chart_url(time_history, gold_ohlc_history, "Gold (XAU/USD) Hourly Candlestick")
-            send_photo_url(gold_chart_url, f"📊 <b>نمودار کندلی انس طلا (ساعتی)</b>\n⏰ <b>{now_str}</b>")
+            # ۲. چارت انس طلا
+            gold_prices = gold_history if len(gold_history) > 1 else ([last_xau_usd, last_xau_usd] if last_xau_usd else [2300, 2300])
+            gold_chart_url = get_quickchart_url(times, gold_prices, "Gold (XAU/USD) 2-Min Chart Test", "rgb(255, 215, 0)")
+            send_photo_url(gold_chart_url, f"📊 <b>چارت نوسانات انس طلا (تست ۲ دقیقه‌ای)</b>\n⏰ <b>{now_str}</b>")
 
-            print(f"[{now_str}] نمودارهای کندلی ساعتی ارسال شدند.")
-
+            print(f"[{now_str}] چارت‌های تصویری تست با موفقیت ارسال شدند.")
         except Exception as e:
-            print(f"خطا در ارسال نمودارهای ساعتی: {repr(e)}")
-            time.sleep(60)
+            print(f"خطا در ارسال چارت‌ها: {repr(e)}")
+            
+        # ارسال هر ۱۲۰ ثانیه (۲ دقیقه)
+        time.sleep(120)
 
-# ---- 4. حلقه اصلی دریافت قیمت‌ها (چک کردن تغییرات هر ۱۰ ثانیه) ----
+# ---- 4. حلقه اصلی دریافت و چک کردن قیمت‌ها (هر ۳۰ ثانیه) ----
 def bot_loop():
     global last_usdt_bid, last_usdt_ask, last_btc_usdt
     global last_xau_usd, last_gold_18k_nobitex, last_gold_18k_global
     
     current_time = get_iran_time()
-    print(f"ربات شروع به کار کرد | ساعت ایران: {current_time}")
+    print(f"ربات شروع شد | ساعت ایران: {current_time}")
+    send_message(f"🤖 <b>حالت تست چارت (ارسال هر ۲ دقیقه) فعال شد!</b>\n⏰ {current_time}")
 
     while True:
         try:
@@ -262,8 +217,10 @@ def bot_loop():
                 gold_18k_nobitex = int((xaut_irt_val / 31.1034768) * (18.0 / 24.0)) if xaut_irt_val else 0
                 gold_18k_global = int(((xau_usd_val * usdt_toman) / 31.1034768) * (18.0 / 24.0)) if (xau_usd_val and usdt_toman) else 0
 
+                # ذخیره قیمت برای چارت
                 if xau_usd_val > 0:
-                    current_gold_prices.append(xau_usd_val)
+                    gold_history.append(xau_usd_val)
+                    if len(gold_history) > 30: gold_history.pop(0)
 
                 if last_xau_usd is None or (xau_usd_val != last_xau_usd) or (gold_18k_nobitex != last_gold_18k_nobitex):
                     xau_arrow = get_arrow(xau_usd_val, last_xau_usd)
@@ -273,8 +230,8 @@ def bot_loop():
                     gold_msg = (
                         f"⏰ <b>{now_str}</b>\n"
                         f"🥇 <b>انس طلا:</b> ${xau_usd_val:,.2f} {xau_arrow}\n"
-                        f"🔱 <b>طلا/تومان ۱۸عیار :</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
-                        f"🌐 <b>طلا/تتر ۱۸عیار :</b> {gold_18k_global:,} تومان {gold_global_arrow}"
+                        f"🔱 <b>طلا ۱۸عیار (نوبیتکس):</b> {gold_18k_nobitex:,} تومان {gold_nobitex_arrow}\n"
+                        f"🌐 <b>طلا ۱۸عیار (انس جهانی):</b> {gold_18k_global:,} تومان {gold_global_arrow}"
                     )
                     send_message(gold_msg)
 
@@ -290,8 +247,13 @@ def bot_loop():
                 usdt_ask_val = int(usdt_ask / 10) if (usdt_ask and usdt_ask > 100000) else int(usdt_ask or 0)
                 btc_usdt_val = round(btc_last, 2) if btc_last else 0.0
 
+                # ذخیره قیمت و زمان برای چارت
                 if btc_usdt_val > 0:
-                    current_btc_prices.append(btc_usdt_val)
+                    btc_history.append(btc_usdt_val)
+                    time_history.append(now_str[:5])
+                    if len(btc_history) > 30: 
+                        btc_history.pop(0)
+                        time_history.pop(0)
 
                 if last_usdt_bid is None or (usdt_bid_val != last_usdt_bid) or (btc_usdt_val != last_btc_usdt):
                     usdt_bid_arrow = get_arrow(usdt_bid_val, last_usdt_bid)
@@ -310,11 +272,14 @@ def bot_loop():
                     last_usdt_ask = usdt_ask_val
                     last_btc_usdt = btc_usdt_val
 
-            time.sleep(10)
+            print(f"[{get_iran_time()}] داده‌ها در تاریخچه ذخیره شدند.")
+            
+            # برحصور هر ۳۰ ثانیه یک‌بار قیمت‌ها دریافت و ثبت می‌شوند
+            time.sleep(30)
 
         except Exception as e:
             print(f"[{get_iran_time()}] خطا در حلقه اصلی: {repr(e)}")
-            time.sleep(10)
+            time.sleep(30)
 
 # ---- 5. اجرا ----
 if __name__ == "__main__":
